@@ -2,6 +2,8 @@
 
 *Automated vehicle damage detection and assessment using Computer Vision and Deep Learning*
 
+Explore real-world examples in the /screenshots folder!
+
 ## 📖 Project Description
 
 Car Damage Assessment AI is an intelligent system that automatically detects and analyzes vehicle damage from photographs. Using state-of-the-art computer vision models, the system can identify various types of damage, assess their severity, and provide detailed reports for insurance and repair purposes.
