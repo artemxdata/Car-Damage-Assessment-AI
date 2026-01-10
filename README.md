@@ -261,6 +261,12 @@ streamlit run app.py --server.port 8502
 
 ## 🐳 Docker Deployment
 
+### Run from Docker Hub (no build required)
+
+```bash
+docker pull artemxdata/car-damage-assessment-ai:latest
+docker run --rm -p 8501:8501 artemxdata/car-damage-assessment-ai:latest
+
 ### **Quick Docker Setup:**
 ```bash
 # Build container
