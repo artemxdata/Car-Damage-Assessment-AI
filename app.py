@@ -8,7 +8,10 @@ import plotly.graph_objects as go
 import pandas as pd
 from datetime import datetime
 import os
-import tempfile
+import tempfile  # FIX: was tempfil
+
+from agentic.decision_agent import DecisionAgent
+from agentic.adapters import pick_primary_detection, detection_to_damage_signal  # FIX names
 
 # Import custom modules (will create these)
 try:
@@ -69,6 +72,7 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
 
 def demo_damage_detection(image):
     """
@@ -145,6 +149,7 @@ def demo_damage_detection(image):
     
     return img_with_annotations, detections
 
+
 def create_damage_distribution_chart(detections):
     """Create a pie chart showing damage type distribution"""
     damage_counts = {}
@@ -159,6 +164,7 @@ def create_damage_distribution_chart(detections):
     )
     fig.update_traces(textposition='inside', textinfo='percent+label')
     return fig
+
 
 def create_severity_chart(detections):
     """Create a bar chart showing severity distribution"""
@@ -185,6 +191,7 @@ def create_severity_chart(detections):
     
     return fig
 
+
 def generate_assessment_report(detections, image_info):
     """Generate a comprehensive damage assessment report"""
     total_cost = sum([d.get('estimated_cost', 0) for d in detections])
@@ -207,6 +214,7 @@ def generate_assessment_report(detections, image_info):
     }
     
     return report
+
 
 def main():
     # Application header
@@ -312,7 +320,32 @@ def main():
             )
             
             detections = st.session_state.detections
-            
+
+            # --- Agentic decision spike (safe, minimal integration) ---
+            agent = DecisionAgent(policies_dir="policies")
+            primary = pick_primary_detection(detections)
+
+            st.subheader("Agent Decision (Spike)")
+            if primary is not None:
+                signal = detection_to_damage_signal(primary)
+                decision = agent.decide(signal)
+
+                st.write(f"**Action:** {decision.action}")
+                st.write(f"**Reason:** {decision.reason}")
+
+                if decision.policy_refs:
+                    st.write("**Policy refs:**")
+                    for ref in decision.policy_refs:
+                        st.write(f"- {ref}")
+
+                if decision.next_steps:
+                    st.write("**Next steps:**")
+                    for step in decision.next_steps:
+                        st.write(f"- {step}")
+            else:
+                st.info("No detections available to drive an agent decision.")
+            # --- end spike ---
+
             # Key metrics display
             st.subheader("Assessment Summary")
             
@@ -428,6 +461,7 @@ def main():
             st.write("- **Dents**: Body deformation damage") 
             st.write("- **Paint Damage**: Color and coating issues")
             st.write("- **Broken Parts**: Structural component damage")
+
 
 if __name__ == "__main__":
     main()
