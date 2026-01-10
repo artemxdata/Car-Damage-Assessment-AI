@@ -1,0 +1,33 @@
+version: 1
+
+thresholds:
+  auto_approve_conf: 0.85
+  human_review_conf: 0.55
+
+rules:
+  - name: auto_approve_minor_scratch
+    if:
+      damage_type_in: ["scratch"]
+      severity_in: ["minor"]
+      confidence_gte: 0.85
+    then:
+      action: "AUTO_APPROVE"
+      sop_ref: "damage_triage.md#minor-scratch"
+      reason: "High-confidence minor scratch matches auto-approval policy."
+
+  - name: escalate_severe_damage
+    if:
+      severity_in: ["severe"]
+      confidence_gte: 0.55
+    then:
+      action: "ESCALATE"
+      sop_ref: "damage_triage.md#severe-damage"
+      reason: "Severe damage should be escalated for specialist assessment."
+
+  - name: low_confidence_human_review
+    if:
+      confidence_lt: 0.55
+    then:
+      action: "HUMAN_REVIEW"
+      sop_ref: "damage_triage.md#low-confidence"
+      reason: "Low confidence: route to human review."
