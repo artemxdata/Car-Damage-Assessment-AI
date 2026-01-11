@@ -220,3 +220,5 @@ artemxdata.pub
 
 # Virtualenv
 .venv/
+
+!.env.example
