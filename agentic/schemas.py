@@ -26,6 +26,7 @@ class DamageSignal:
     regions: List[DamageRegion] = field(default_factory=list)
     notes: Optional[str] = None
 
+
 @dataclass
 class Decision:
     action: Action
@@ -33,3 +34,5 @@ class Decision:
     policy_refs: List[str] = field(default_factory=list)
     next_steps: List[str] = field(default_factory=list)
     evidence: Optional[str] = None
+    # NEW: debug-only RAG context (should be hidden for customers by default)
+    kb_evidence: Optional[str] = None

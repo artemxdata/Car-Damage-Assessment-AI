@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import streamlit as st
 import cv2
 import numpy as np
@@ -9,10 +12,16 @@ from datetime import datetime
 import textwrap
 from streamlit.components.v1 import html as st_html
 
+# ✅ 8.1) add import (and used below)
+from agentic.expert_ai import generate_expert_commentary
+
+# ✅ 3.1) add import
+from agentic.explainer import build_customer_explanation, format_kb_insights
+
 from agentic.decision_agent import DecisionAgent
 from agentic.adapters import pick_primary_detection, detection_to_damage_signal
 
-# Import custom modules (will create these)
+# Import custom modules (optional; demo mode if missing)
 try:
     from car_damage_detector import CarDamageDetector
     from utils import enhance_image, calculate_damage_stats
@@ -23,14 +32,11 @@ except ImportError:
 # Page configuration
 st.set_page_config(
     page_title="Car Damage Assessment AI",
-    page_icon=" ",
+    page_icon="🚗",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# =========================
-# Apple-like (monochrome) UI
-# =========================
 st.markdown(r"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
@@ -94,7 +100,7 @@ h1,h2,h3{
   color: var(--muted);
 }
 
-/* Alerts: make warning look premium */
+/* Alerts */
 div[data-testid="stAlert"]{
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,0.10);
@@ -201,7 +207,7 @@ div[data-testid="stExpander"] details summary{
   background: rgba(255,255,255,0.018);
 }
 
-/* Buttons: Apple-like */
+/* Buttons */
 .stButton button{
   border-radius: 14px !important;
   border: 1px solid rgba(255,255,255,0.14) !important;
@@ -267,7 +273,7 @@ hr{
   border-radius: 10px;
 }
 
-/* FIX: Multiselect tags (remove red/pink) */
+/* Multiselect tags (remove red/pink) */
 div[data-baseweb="tag"]{
   background-color: rgba(255,255,255,0.06) !important;
   border: 1px solid rgba(255,255,255,0.12) !important;
@@ -280,7 +286,7 @@ div[data-baseweb="tag"] svg{
   color: rgba(255,255,255,0.70) !important;
 }
 
-/* FIX: Slider accent (remove red) */
+/* Slider accent (remove red) */
 div[data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"]{
   background-color: rgba(255,255,255,0.92) !important;
   box-shadow: 0 0 0 6px rgba(255,255,255,0.06);
@@ -292,12 +298,12 @@ div[data-testid="stSlider"] [data-baseweb="slider"] div[aria-valuenow]{
   background: rgba(255,255,255,0.55) !important;
 }
 
-/* Checkbox accents (less colorful) */
+/* Checkbox accents */
 div[data-testid="stCheckbox"] svg{
   color: rgba(255,255,255,0.90) !important;
 }
 
-/* Headers inside main content: calmer spacing */
+/* Headers inside main content */
 h2{
   margin-bottom: 0.25rem;
 }
@@ -305,8 +311,7 @@ h2{
 """, unsafe_allow_html=True)
 
 
-def hero_svg_car_damage():
-    # Premium monochrome SVG, rendered via components.html to avoid Markdown "code block" bug.
+def hero_svg_car_damage() -> str:
     svg = r"""
 <div style="border-radius:14px; border:1px solid rgba(255,255,255,0.10);
             background: radial-gradient(circle at 30% 35%, rgba(255,255,255,0.08), transparent 55%),
@@ -424,55 +429,51 @@ def hero_svg_car_damage():
     return textwrap.dedent(svg).strip()
 
 
-def demo_damage_detection(image):
-    """
-    Demo function that simulates damage detection for demonstration purposes.
-    In production, this would be replaced with actual ML model inference.
-    """
+def demo_damage_detection(image: Image.Image):
+    """Demo function that simulates damage detection for demonstration purposes."""
     img_array = np.array(image)
     height, width = img_array.shape[:2]
 
     detections = [
         {
-            'type': 'Scratch',
-            'severity': 'Light',
-            'confidence': 0.89,
-            'bbox': [int(width*0.2), int(height*0.3), int(width*0.4), int(height*0.5)],
-            'area_percentage': 2.5,
-            'estimated_cost': 150
+            "type": "Scratch",
+            "severity": "Light",
+            "confidence": 0.89,
+            "bbox": [int(width * 0.2), int(height * 0.3), int(width * 0.4), int(height * 0.5)],
+            "area_percentage": 2.5,
+            "estimated_cost": 150,
         },
         {
-            'type': 'Dent',
-            'severity': 'Moderate',
-            'confidence': 0.76,
-            'bbox': [int(width*0.6), int(height*0.2), int(width*0.8), int(height*0.4)],
-            'area_percentage': 8.3,
-            'estimated_cost': 450
+            "type": "Dent",
+            "severity": "Moderate",
+            "confidence": 0.76,
+            "bbox": [int(width * 0.6), int(height * 0.2), int(width * 0.8), int(height * 0.4)],
+            "area_percentage": 8.3,
+            "estimated_cost": 450,
         },
         {
-            'type': 'Paint Damage',
-            'severity': 'Light',
-            'confidence': 0.82,
-            'bbox': [int(width*0.1), int(height*0.6), int(width*0.25), int(height*0.8)],
-            'area_percentage': 3.2,
-            'estimated_cost': 200
-        }
+            "type": "Paint Damage",
+            "severity": "Light",
+            "confidence": 0.82,
+            "bbox": [int(width * 0.1), int(height * 0.6), int(width * 0.25), int(height * 0.8)],
+            "area_percentage": 3.2,
+            "estimated_cost": 200,
+        },
     ]
 
     img_with_annotations = img_array.copy()
 
-    # NOTE: These colors are part of the image annotation (OpenCV), not UI CSS.
-    # If you want Apple-style monochrome boxes, say so and I'll switch to white/gray here.
+    # Annotation colors are part of the image (OpenCV), not UI CSS.
     colors = {
-        'Scratch': (0, 255, 0),
-        'Dent': (255, 165, 0),
-        'Paint Damage': (255, 0, 255),
-        'Broken Part': (255, 0, 0)
+        "Scratch": (0, 255, 0),
+        "Dent": (255, 165, 0),
+        "Paint Damage": (255, 0, 255),
+        "Broken Part": (255, 0, 0),
     }
 
     for detection in detections:
-        x1, y1, x2, y2 = detection['bbox']
-        color = colors.get(detection['type'], (255, 255, 0))
+        x1, y1, x2, y2 = detection["bbox"]
+        color = colors.get(detection["type"], (255, 255, 0))
 
         cv2.rectangle(img_with_annotations, (x1, y1), (x2, y2), color, 3)
 
@@ -483,17 +484,18 @@ def demo_damage_detection(image):
             img_with_annotations,
             (x1, y1 - label_size[1] - 10),
             (x1 + label_size[0], y1),
-            color, -1
+            color,
+            -1,
         )
 
         cv2.putText(
             img_with_annotations,
             label,
-            (x1, y1-5),
+            (x1, y1 - 5),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             (255, 255, 255),
-            2
+            2,
         )
 
     return img_with_annotations, detections
@@ -502,20 +504,16 @@ def demo_damage_detection(image):
 def create_damage_distribution_chart(detections):
     damage_counts = {}
     for detection in detections:
-        damage_type = detection['type']
+        damage_type = detection["type"]
         damage_counts[damage_type] = damage_counts.get(damage_type, 0) + 1
 
-    fig = px.pie(
-        values=list(damage_counts.values()),
-        names=list(damage_counts.keys()),
-        title="Damage Type Distribution"
-    )
-    fig.update_traces(textposition='inside', textinfo='percent+label')
+    fig = px.pie(values=list(damage_counts.values()), names=list(damage_counts.keys()), title="Damage Type Distribution")
+    fig.update_traces(textposition="inside", textinfo="percent+label")
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color="rgba(255,255,255,0.86)"),
-        title_font=dict(size=18)
+        title_font=dict(size=18),
     )
     return fig
 
@@ -523,18 +521,20 @@ def create_damage_distribution_chart(detections):
 def create_severity_chart(detections):
     severity_counts = {}
     for detection in detections:
-        severity = detection['severity']
+        severity = detection["severity"]
         severity_counts[severity] = severity_counts.get(severity, 0) + 1
 
-    colors = {'Light': '#cfcfcf', 'Moderate': '#9a9a9a', 'Severe': '#f2f2f2'}
+    colors = {"Light": "#cfcfcf", "Moderate": "#9a9a9a", "Severe": "#f2f2f2"}
 
-    fig = go.Figure(data=[
-        go.Bar(
-            x=list(severity_counts.keys()),
-            y=list(severity_counts.values()),
-            marker_color=[colors.get(k, '#8a8a8a') for k in severity_counts.keys()]
-        )
-    ])
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=list(severity_counts.keys()),
+                y=list(severity_counts.values()),
+                marker_color=[colors.get(k, "#8a8a8a") for k in severity_counts.keys()],
+            )
+        ]
+    )
 
     fig.update_layout(
         title="Damage Severity Distribution",
@@ -543,39 +543,123 @@ def create_severity_chart(detections):
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color="rgba(255,255,255,0.86)"),
-        title_font=dict(size=18)
+        title_font=dict(size=18),
     )
 
     return fig
 
 
 def generate_assessment_report(detections, image_info):
-    total_cost = sum([d.get('estimated_cost', 0) for d in detections])
-    total_area = sum([d['area_percentage'] for d in detections])
-    avg_confidence = np.mean([d['confidence'] for d in detections])
+    total_cost = sum([d.get("estimated_cost", 0) for d in detections])
+    total_area = sum([d["area_percentage"] for d in detections])
+    avg_confidence = np.mean([d["confidence"] for d in detections])
 
-    severity_priority = {'Severe': 3, 'Moderate': 2, 'Light': 1}
-    highest_severity = max([severity_priority.get(d['severity'], 0) for d in detections])
-    severity_names = {3: 'Severe', 2: 'Moderate', 1: 'Light'}
+    severity_priority = {"Severe": 3, "Moderate": 2, "Light": 1}
+    highest_severity = max([severity_priority.get(d["severity"], 0) for d in detections])
+    severity_names = {3: "Severe", 2: "Moderate", 1: "Light"}
 
     report = {
-        'timestamp': datetime.now(),
-        'image_dimensions': image_info,
-        'total_damages': len(detections),
-        'total_affected_area': total_area,
-        'estimated_repair_cost': total_cost,
-        'average_confidence': avg_confidence,
-        'highest_severity': severity_names.get(highest_severity, 'None'),
-        'damage_breakdown': detections
+        "timestamp": datetime.now(),
+        "image_dimensions": image_info,
+        "total_damages": len(detections),
+        "total_affected_area": total_area,
+        "estimated_repair_cost": total_cost,
+        "average_confidence": avg_confidence,
+        "highest_severity": severity_names.get(highest_severity, "None"),
+        "damage_breakdown": detections,
     }
-
     return report
+
+
+def render_decision_actions(decision, primary_detection):
+    """
+    Decision-driven UI: show different CTAs based on agent decision.
+    This is a Spike UI layer (no external integrations yet).
+    """
+    st.markdown("---")
+    st.subheader("Next Actions")
+
+    if primary_detection:
+        st.caption(
+            f"Primary detection: {primary_detection.get('type')} / {primary_detection.get('severity')} "
+            f"(conf={primary_detection.get('confidence', 0.0):.2f})"
+        )
+
+    if decision.action == "AUTO_APPROVE":
+        st.success("This case is eligible for auto-approval. You can create a repair ticket.")
+        col1, col2 = st.columns([1, 1])
+
+        with col1:
+            if st.button("✅ Create Repair Ticket", use_container_width=True):
+                st.session_state["ticket_created"] = True
+
+        with col2:
+            if st.button("📩 Notify Customer", use_container_width=True):
+                st.session_state["customer_notified"] = True
+
+        if st.session_state.get("ticket_created"):
+            st.info("Ticket created (demo). Next: integrate with real ticketing system.")
+        if st.session_state.get("customer_notified"):
+            st.info("Customer notified (demo). Next: integrate with email/SMS.")
+
+    elif decision.action == "HUMAN_REVIEW":
+        st.warning("This case requires human review. Complete the checklist and submit.")
+
+        st.write("**Operator checklist:**")
+        c1 = st.checkbox("Verify vehicle ID / VIN from the photos")
+        c2 = st.checkbox("Confirm severity and affected area")
+        c3 = st.checkbox("Request additional angles if needed")
+        c4 = st.checkbox("Check if replacement vs repair is required")
+
+        ready = all([c1, c2, c3, c4])
+
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            notes = st.text_area("Operator notes (demo)", height=90, placeholder="Write short notes for the reviewer...")
+
+        with col2:
+            if st.button("⚠️ Submit for Human Review", use_container_width=True, disabled=not ready):
+                st.session_state["submitted_for_review"] = True
+                st.session_state["review_notes"] = notes
+
+        if st.session_state.get("submitted_for_review"):
+            st.info("Submitted for review (demo). Next: send to queue / DB.")
+            if st.session_state.get("review_notes"):
+                st.code(st.session_state["review_notes"])
+
+    elif decision.action == "ESCALATE":
+        st.error("This case must be escalated to a specialist assessor.")
+
+        col1, col2, col3 = st.columns([1, 1, 1])
+
+        with col1:
+            if st.button("🔺 Assign Senior Assessor", use_container_width=True):
+                st.session_state["assigned_senior"] = True
+
+        with col2:
+            if st.button("📎 Request Additional Documents", use_container_width=True):
+                st.session_state["requested_docs"] = True
+
+        with col3:
+            if st.button("🧾 Generate Escalation Packet", use_container_width=True):
+                st.session_state["packet_generated"] = True
+
+        if st.session_state.get("assigned_senior"):
+            st.info("Assigned to senior assessor (demo). Next: integrate with workflow.")
+        if st.session_state.get("requested_docs"):
+            st.info("Requested additional documents (demo). Next: email/portal integration.")
+        if st.session_state.get("packet_generated"):
+            st.info("Escalation packet generated (demo). Next: PDF export.")
+
+    else:
+        st.info("No action UI for this decision type yet.")
 
 
 def render_hero():
     left, right = st.columns([1.35, 1])
     with left:
-        st.markdown("""
+        st.markdown(
+            """
 <div class="hero-wrap">
   <h1 class="hero-title">Car Damage Assessment AI</h1>
   <div class="hero-subtitle">
@@ -589,7 +673,9 @@ def render_hero():
     <span class="tag">Decision assist</span>
   </div>
 </div>
-""", unsafe_allow_html=True)
+""",
+            unsafe_allow_html=True,
+        )
 
     with right:
         st.markdown('<div class="hero-right">', unsafe_allow_html=True)
@@ -598,9 +684,9 @@ def render_hero():
             "<div style='margin-top:10px; color:rgba(255,255,255,0.62); font-size:0.92rem;'>"
             "Tip: sharp, well-lit images improve confidence scores."
             "</div>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def main():
@@ -610,9 +696,12 @@ def main():
         st.markdown("## Configuration")
         st.markdown(
             "<div style='color:rgba(255,255,255,0.58); margin-top:-8px;'>Tune detection and reporting</div>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
         st.markdown("---")
+
+        # ✅ dev mode toggle
+        developer_mode = st.checkbox("Developer mode (show debug)", value=False)
 
         st.markdown("### Detection Parameters")
         confidence_threshold = st.slider(
@@ -621,14 +710,14 @@ def main():
             max_value=1.0,
             value=0.5,
             step=0.05,
-            help="Minimum confidence score for damage detection"
+            help="Minimum confidence score for damage detection",
         )
 
         damage_types = st.multiselect(
             "Damage Types to Detect",
             ["Scratches", "Dents", "Broken Parts", "Paint Damage"],
             default=["Scratches", "Dents", "Paint Damage"],
-            help="Select which types of damage to analyze"
+            help="Select which types of damage to analyze",
         )
 
         st.markdown("### Processing Options")
@@ -636,14 +725,19 @@ def main():
         show_confidence = st.checkbox("Display Confidence Scores", value=True)
         generate_report = st.checkbox("Generate Assessment Report", value=True)
 
+        # ✅ 8.2) expert AI toggle (safe default False)
+        enable_expert_ai = st.checkbox("Enable AI Expert Insight (LLM)", value=False)
+
         st.markdown("---")
-        st.markdown("""
+        st.markdown(
+            """
         #### System Information
         **Model**: YOLOv8 Custom Trained  
         **Accuracy**: 87% mAP@0.5  
         **Classes**: 4 damage types  
         **Processing**: Real-time inference  
-        """)
+        """
+        )
 
     col1, col2 = st.columns([1, 1])
 
@@ -651,13 +745,13 @@ def main():
         st.markdown("## Image Upload")
         st.markdown(
             "<div style='color:rgba(255,255,255,0.58); margin-top:-10px;'>Upload a vehicle image for analysis</div>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
         uploaded_file = st.file_uploader(
             "Select vehicle image for analysis",
-            type=['png', 'jpg', 'jpeg'],
-            help="Upload a clear, well-lit image of the vehicle showing potential damage areas"
+            type=["png", "jpg", "jpeg"],
+            help="Upload a clear, well-lit image of the vehicle showing potential damage areas",
         )
 
         if uploaded_file is not None:
@@ -677,6 +771,7 @@ def main():
             if st.button("Analyze Damage", type="primary", use_container_width=True):
                 with st.spinner("Processing image and detecting damage..."):
                     import time
+
                     time.sleep(2)
 
                     processed_image, detections = demo_damage_detection(image)
@@ -692,14 +787,14 @@ def main():
         st.markdown("## Analysis Results")
         st.markdown(
             "<div style='color:rgba(255,255,255,0.58); margin-top:-10px;'>Detections, decision, summary and charts</div>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
-        if 'detections' in st.session_state:
+        if "detections" in st.session_state:
             st.image(
                 st.session_state.processed_image,
                 caption="Detected Damage Areas (Annotated)",
-                use_container_width=True
+                use_container_width=True,
             )
 
             detections = st.session_state.detections
@@ -714,31 +809,98 @@ def main():
                 signal = detection_to_damage_signal(primary)
                 decision = agent.decide(signal)
 
-                badge = {
-                    "AUTO_APPROVE": "AUTO_APPROVE",
-                    "HUMAN_REVIEW": "HUMAN_REVIEW",
-                    "ESCALATE": "ESCALATE",
-                }.get(decision.action, decision.action)
+                # Product-ready explanation (customer mode)
+                sop_text = getattr(decision, "evidence", None)  # SOP section text
+                expl = build_customer_explanation(
+                    decision_action=decision.action,
+                    decision_reason=decision.reason,
+                    policy_refs=list(decision.policy_refs or []),
+                    next_steps=list(decision.next_steps or []),
+                    sop_text=sop_text,
+                    signal=signal,
+                )
 
-                st.markdown(f"#### {badge}")
-                st.write(f"**Reason:** {decision.reason}")
+                # Badge
+                badge_emoji = {
+                    "AUTO_APPROVE": "✅",
+                    "HUMAN_REVIEW": "⚠️",
+                    "ESCALATE": "🔺",
+                }.get(decision.action, "ℹ️")
 
-                col_a, col_b = st.columns([1, 1])
-                with col_a:
-                    if decision.policy_refs:
-                        st.write("**Policy refs:**")
-                        for ref in decision.policy_refs:
-                            st.write(f"- {ref}")
+                st.markdown(f"#### {badge_emoji} {decision.action}")
+                st.caption(expl["summary"])
 
-                with col_b:
-                    if decision.next_steps:
-                        st.write("**Next steps:**")
-                        for step in decision.next_steps:
-                            st.write(f"- {step}")
+                # WHY (customer-friendly)
+                if expl["why_bullets"]:
+                    st.write("**Why this decision:**")
+                    for b in expl["why_bullets"]:
+                        st.write(f"- {b}")
 
-                if getattr(decision, "evidence", None):
-                    with st.expander("SOP Evidence (retrieved context)"):
-                        st.code(decision.evidence)
+                # NEXT STEPS (customer-friendly)
+                if expl["next_steps"]:
+                    st.write("**Next steps:**")
+                    for s in expl["next_steps"]:
+                        st.write(f"- {s}")
+
+                # Actions UI (your spike CTA layer)
+                render_decision_actions(decision, primary_detection=primary)
+
+                # --- Expert AI layer (non-decision) ---
+                st.markdown("#### Expert insight")
+
+                try:
+                    # local import to keep this file minimal + no global side effects
+                    from pathlib import Path
+
+                    expert = generate_expert_commentary(
+                        decision_action=decision.action,
+                        decision_reason=decision.reason,
+                        sop_evidence=getattr(decision, "evidence", None),
+                        signal=signal,
+                        primary_detection=primary,
+                        knowledge_dir=Path("knowledge"),
+                        enable_llm=enable_expert_ai,
+                        top_k=3,
+                    )
+
+                    with st.expander("Expert insight (practical guidance)"):
+                        st.markdown(expert.text)
+
+                        # маленький “debug footer” можно показывать только в developer mode
+                        if st.session_state.get("dev_mode", False):
+                            st.caption(f"LLM used: {expert.used_llm} | KB hits: {expert.kb_hits}")
+
+                except Exception as e:
+                    st.info("Expert insight is temporarily unavailable.")
+                    if st.session_state.get("dev_mode", False):
+                        st.exception(e)
+                # --- end expert layer ---
+
+                # Expert insights (RAG) — customer view (existing)
+                q = f"{signal.get('damage_type', '')} {signal.get('severity', '')} repair guidance checklist risks"
+                chunks = agent.retriever.retrieve(q, top_k=3)
+                insights = format_kb_insights(chunks, max_items=4)
+
+                if insights:
+                    with st.expander("Expert insight (practical guidance)"):
+                        for it in insights:
+                            st.write(f"- {it}")
+
+                # Developer debug view
+                if developer_mode:
+                    with st.expander("DEBUG — policy refs"):
+                        st.write(expl.get("policy_refs", []))
+
+                    with st.expander("DEBUG — SOP section (raw)"):
+                        st.code(sop_text or "")
+
+                    with st.expander("DEBUG — Retrieved KB (raw)"):
+                        if not chunks:
+                            st.write("(no chunks)")
+                        for ch in chunks:
+                            st.write(f"- source: {ch.source} | score: {ch.score:.2f}")
+                            st.code(ch.text)
+
             else:
                 st.info("No detections available to drive an agent decision.")
             # --- end spike ---
@@ -751,21 +913,21 @@ def main():
                 st.metric("Total Damages", len(detections))
 
             with col2_metrics:
-                avg_confidence = np.mean([d['confidence'] for d in detections])
+                avg_confidence = np.mean([d["confidence"] for d in detections])
                 st.metric("Avg Confidence", f"{avg_confidence:.1%}")
 
             with col3_metrics:
-                total_area = sum([d['area_percentage'] for d in detections])
+                total_area = sum([d["area_percentage"] for d in detections])
                 st.metric("Affected Area", f"{total_area:.1f}%")
 
             with col4_metrics:
-                total_cost = sum([d.get('estimated_cost', 0) for d in detections])
+                total_cost = sum([d.get("estimated_cost", 0) for d in detections])
                 st.metric("Estimated Repair Cost", f"${total_cost}")
 
             st.markdown("### Damage Details")
 
             for detection in detections:
-                severity = detection['severity']
+                severity = detection["severity"]
                 with st.expander(f"{detection['type']} — {severity}"):
                     col1_detail, col2_detail = st.columns(2)
 
@@ -776,13 +938,13 @@ def main():
                         st.write(f"**Area Affected:** {detection['area_percentage']:.1f}%")
 
                     with col2_detail:
-                        bbox = detection['bbox']
+                        bbox = detection["bbox"]
                         st.write(f"**Bounding Box:** ({bbox[0]}, {bbox[1]}) to ({bbox[2]}, {bbox[3]})")
                         st.write(f"**Estimated Cost:** ${detection.get('estimated_cost', 'N/A')}")
 
-                        if severity == 'Severe':
+                        if severity == "Severe":
                             st.error("Immediate repair recommended")
-                        elif severity == 'Moderate':
+                        elif severity == "Moderate":
                             st.warning("Repair recommended within 30 days")
                         else:
                             st.info("Cosmetic repair — no urgency")
@@ -804,24 +966,27 @@ def main():
 
                 report = generate_assessment_report(detections, st.session_state.image_info)
 
-                st.write("**Report Generated:**", report['timestamp'].strftime("%Y-%m-%d %H:%M:%S"))
+                st.write("**Report Generated:**", report["timestamp"].strftime("%Y-%m-%d %H:%M:%S"))
                 st.write("**Overall Assessment:**", f"{report['highest_severity']} damage level detected")
                 st.write(
                     "**Recommended Action:**",
-                    "Immediate attention required" if report['highest_severity'] == 'Severe'
-                    else "Schedule repair within reasonable timeframe"
+                    "Immediate attention required"
+                    if report["highest_severity"] == "Severe"
+                    else "Schedule repair within reasonable timeframe",
                 )
 
-                damage_df = pd.DataFrame([
-                    {
-                        'Type': d['type'],
-                        'Severity': d['severity'],
-                        'Confidence': f"{d['confidence']:.1%}",
-                        'Area %': f"{d['area_percentage']:.1f}%",
-                        'Estimated Cost': f"${d.get('estimated_cost', 0)}"
-                    }
-                    for d in detections
-                ])
+                damage_df = pd.DataFrame(
+                    [
+                        {
+                            "Type": d["type"],
+                            "Severity": d["severity"],
+                            "Confidence": f"{d['confidence']:.1%}",
+                            "Area %": f"{d['area_percentage']:.1f}%",
+                            "Estimated Cost": f"${d.get('estimated_cost', 0)}",
+                        }
+                        for d in detections
+                    ]
+                )
 
                 st.dataframe(damage_df, use_container_width=True)
 
@@ -829,7 +994,7 @@ def main():
                     label="Download Assessment Report (JSON)",
                     data=str(report),
                     file_name=f"damage_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                    mime="text/plain"
+                    mime="text/plain",
                 )
 
         else:
