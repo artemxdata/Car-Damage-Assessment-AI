@@ -26,10 +26,10 @@ class DamageSignal:
     regions: List[DamageRegion] = field(default_factory=list)
     notes: Optional[str] = None
 
-
 @dataclass
 class Decision:
     action: Action
     reason: str
     policy_refs: List[str] = field(default_factory=list)
     next_steps: List[str] = field(default_factory=list)
+    evidence: Optional[str] = None

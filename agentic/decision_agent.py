@@ -7,32 +7,34 @@ from agentic.policy_loader import Policy, load_policy
 from agentic.schemas import Decision, DamageSignal
 from agentic.sop_retriever import load_sop_section
 
+def _sig_get(signal, key: str, default=None):
+    # supports both dict and objects/dataclasses
+    if isinstance(signal, dict):
+        return signal.get(key, default)
+    return getattr(signal, key, default)
 
-def _match_rule(signal: DamageSignal, cond: dict) -> bool:
-    # Supported conditions (minimal for spike):
-    # - damage_type_in: list[str]
-    # - severity_in: list[str]
-    # - confidence_gte: float
-    # - confidence_lt: float
+def _match_rule(signal, cond: dict) -> bool:
+    damage_type = _sig_get(signal, "damage_type")
+    severity = _sig_get(signal, "severity")
+    confidence = float(_sig_get(signal, "confidence", 0.0))
 
     if "damage_type_in" in cond:
-        if signal.damage_type not in cond["damage_type_in"]:
+        if damage_type not in cond["damage_type_in"]:
             return False
 
     if "severity_in" in cond:
-        if signal.severity not in cond["severity_in"]:
+        if severity not in cond["severity_in"]:
             return False
 
     if "confidence_gte" in cond:
-        if signal.confidence < float(cond["confidence_gte"]):
+        if confidence < float(cond["confidence_gte"]):
             return False
 
     if "confidence_lt" in cond:
-        if signal.confidence >= float(cond["confidence_lt"]):
+        if confidence >= float(cond["confidence_lt"]):
             return False
 
     return True
-
 
 class DecisionAgent:
     def __init__(self, policies_dir: str | Path = "policies"):
@@ -56,6 +58,7 @@ class DecisionAgent:
                     reason=rule.reason,
                     policy_refs=[policy_ref],
                     next_steps=next_steps,
+		    evidence=sop_text[:600] if sop_text else None,
                 )
 
         # Default fallback (safe)
@@ -64,4 +67,5 @@ class DecisionAgent:
             reason="No policy rule matched. Defaulting to human review for safety.",
             policy_refs=["SOP:damage_triage.md#low-confidence"],
             next_steps=["Request additional images and verify context."],
+   	    evidence="Fallback safety policy: route to human review when rules do not match.",
         )

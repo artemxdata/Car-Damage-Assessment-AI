@@ -1,54 +1,69 @@
 from __future__ import annotations
 
-from typing import Any, Optional
-
-from agentic.schemas import DamageSignal
-
-
-_SEVERITY_MAP = {
-    "Light": "minor",
-    "Moderate": "moderate",
-    "Severe": "severe",
-}
-
-_TYPE_MAP = {
-    "Scratch": "scratch",
-    "Dent": "dent",
-    "Paint Damage": "paint_damage",
-    "Broken Part": "broken_part",
-}
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 
-def pick_primary_detection(detections: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+def pick_primary_detection(detections: list[dict]) -> Optional[dict]:
     """
-    Pick a single "primary" detection to drive the workflow.
-    Strategy:
-      1) Highest severity (Severe > Moderate > Light)
-      2) If tie, highest confidence
+    Pick a single "primary" detection to drive the agent decision.
+    Heuristic: highest severity, then highest confidence.
     """
     if not detections:
         return None
 
-    sev_rank = {"Light": 1, "Moderate": 2, "Severe": 3}
+    severity_rank = {"Severe": 3, "Moderate": 2, "Light": 1}
+    return sorted(
+        detections,
+        key=lambda d: (severity_rank.get(d.get("severity"), 0), d.get("confidence", 0.0)),
+        reverse=True,
+    )[0]
 
-    def key(d: dict[str, Any]) -> tuple[int, float]:
-        return (sev_rank.get(str(d.get("severity")), 0), float(d.get("confidence", 0.0)))
 
-    return sorted(detections, key=key, reverse=True)[0]
+def _normalize_damage_type(raw: str) -> str:
+    s = (raw or "").strip().lower()
+    # normalize common variants
+    if "scratch" in s:
+        return "scratch"
+    if "dent" in s:
+        return "dent"
+    if "paint" in s:
+        return "paint_damage"
+    if "broken" in s:
+        return "broken_part"
+    # fallback: snake-ish
+    return s.replace(" ", "_")
 
 
-def detection_to_damage_signal(detection: dict[str, Any]) -> DamageSignal:
-    raw_type = str(detection.get("type", "unknown"))
-    raw_sev = str(detection.get("severity", ""))
+def _normalize_severity(raw: str) -> str:
+    s = (raw or "").strip().lower()
+    mapping = {
+        "light": "minor",
+        "minor": "minor",
+        "moderate": "moderate",
+        "medium": "moderate",
+        "severe": "severe",
+        "high": "severe",
+    }
+    return mapping.get(s, s.replace(" ", "_"))
 
-    damage_type = _TYPE_MAP.get(raw_type, raw_type.lower().replace(" ", "_"))
-    severity = _SEVERITY_MAP.get(raw_sev, None)
-    confidence = float(detection.get("confidence", 0.0))
 
-    return DamageSignal(
-        damage_type=damage_type,
-        confidence=confidence,
-        severity=severity,  # minor/moderate/severe or None
-        regions=[],
-        notes=None,
-    )
+def detection_to_damage_signal(detection: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert a detection dict from the CV layer into an agent-ready 'signal'
+    that matches policy schema (rules.yaml).
+    """
+    raw_type = detection.get("type", "")
+    raw_sev = detection.get("severity", "")
+    conf = float(detection.get("confidence", 0.0))
+
+    signal = {
+        "damage_type": _normalize_damage_type(raw_type),   # e.g. 'scratch'
+        "severity": _normalize_severity(raw_sev),          # e.g. 'minor'
+        "confidence": conf,
+        "bbox": detection.get("bbox"),
+        "area_percentage": float(detection.get("area_percentage", 0.0)),
+        "estimated_cost": float(detection.get("estimated_cost", 0.0)),
+        "raw": detection,  # keep original for debugging
+    }
+    return signal

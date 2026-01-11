@@ -14,7 +14,17 @@ rules:
       action: "AUTO_APPROVE"
       sop_ref: "damage_triage.md#minor-scratch"
       reason: "High-confidence minor scratch matches auto-approval policy."
-
+      
+  - name: escalate_moderate_dent
+    if:
+      damage_type_in: ["dent"]
+      severity_in: ["moderate"]
+      confidence_gte: 0.55
+    then:
+      action: "ESCALATE"
+      sop_ref: "damage_triage.md#moderate-damage"
+      reason: "Moderate dent requires escalation for operator verification."
+      
   - name: escalate_severe_damage
     if:
       severity_in: ["severe"]
