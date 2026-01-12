@@ -129,13 +129,14 @@ streamlit run app.py
 ##  🐳 **Docker (recommended)**
 
 **Build & run**  
+```bash
 docker build -t car-damage-ai:cpu .  
 docker run --rm -p 8501:8501 car-damage-ai:cpu  
-
+```
 ##  **Docker Compose**  
+```bash
 docker-compose up --build  
-
----
+```
 
 **Services:**  
 - app — Streamlit UI + decision engine  
