@@ -1,109 +1,156 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any, Dict, List, Optional
-import json
-
-from agentic.schemas import Decision
-from agentic.llm.client import load_llm_config, get_llm_client
-from agentic.rag.simple_retriever import SimpleRetriever
 
 
-SYSTEM_PROMPT = """You are a senior vehicle damage assessor assistant.
-Your job: explain the decision and give practical next actions.
-IMPORTANT:
-- Do NOT change or override the agent decision.
-- Be concise, actionable, and safe.
-- If info is insufficient, request specific additional photos/angles.
-Return ONLY valid JSON (no markdown)."""
-
-
-def _safe_json_parse(text: str) -> Optional[Dict[str, Any]]:
-    # Try strict JSON first; then attempt to extract a JSON object from text.
+def _as_float(x: Any, default: float = 0.0) -> float:
     try:
-        return json.loads(text)
+        return float(x)
     except Exception:
-        pass
-
-    # crude extraction: first { ... last }
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        candidate = text[start : end + 1]
-        try:
-            return json.loads(candidate)
-        except Exception:
-            return None
-    return None
+        return default
 
 
-def build_expert_insight(
-    *,
-    decision: Decision,
-    primary_detection: Dict[str, Any],
-    all_detections: List[Dict[str, Any]],
-    sop_evidence: Optional[str] = None,
-    knowledge_dir: str = "knowledge",
+def _pick(d: Any, key: str, default=None):
+    if d is None:
+        return default
+    if isinstance(d, dict):
+        return d.get(key, default)
+    return getattr(d, key, default)
+
+
+def _format_primary(primary: Optional[Dict[str, Any]] = None, signal: Any = None) -> str:
+    """
+    Supports both:
+      - CV primary detection dict: {type, severity, confidence, ...}
+      - agentic DamageSignal-like: {damage_type, severity, confidence, ...}
+    """
+    if primary:
+        t = _pick(primary, "type", "Unknown")
+        sev = _pick(primary, "severity", "unknown")
+        conf = _as_float(_pick(primary, "confidence", 0.0))
+        return f"Detected: {t} · Severity: {sev} · Confidence: {conf:.2f}"
+
+    if signal is not None:
+        t = _pick(signal, "damage_type", _pick(signal, "type", "Unknown"))
+        sev = _pick(signal, "severity", "unknown")
+        conf = _as_float(_pick(signal, "confidence", 0.0))
+        return f"Detected: {t} · Severity: {sev} · Confidence: {conf:.2f}"
+
+    return "Detected: (no primary signal)"
+
+
+def build_customer_explanation(
+    action: Optional[str] = None,
+    reason: Optional[str] = None,
+    primary_detection: Optional[Dict[str, Any]] = None,
+    next_steps: Optional[List[str]] = None,
+    policy_refs: Optional[List[str]] = None,
+    evidence: Optional[str] = None,
+    sop_text: Optional[str] = None,
+    signal: Any = None,
+    # ✅ Aliases used in your app.py right now:
+    decision_action: Optional[str] = None,
+    decision_reason: Optional[str] = None,
+    **_kwargs,
 ) -> Dict[str, Any]:
     """
-    Returns a dict for UI rendering:
-      - enabled: bool
-      - error: str|None
-      - insight: dict|None (structured)
-      - kb_hits: list (debug)
+    Product-ready, backwards-compatible explanation builder.
+
+    IMPORTANT: Your app calls:
+      build_customer_explanation(decision_action=..., decision_reason=..., ...)
+
+    So we accept both:
+      - action/reason (canonical)
+      - decision_action/decision_reason (aliases)
+
+    Also returns keys expected by app.py:
+      - summary
+      - why_bullets
+      - next_steps
+      - policy_refs
     """
-    cfg = load_llm_config()
-    if not cfg:
-        return {"enabled": False, "error": "LLM disabled (set LLM_ENABLED=1 and LLM_* env vars).", "insight": None, "kb_hits": []}
+    # Resolve aliases
+    action = action or decision_action or "HUMAN_REVIEW"
+    reason = reason or decision_reason or "Decision reason not provided."
 
-    # Retrieve KB context (optional)
-    retriever = SimpleRetriever(knowledge_dir=knowledge_dir)
-    query = f"{primary_detection.get('type','')} {primary_detection.get('severity','')} decision {decision.action}"
-    kb_hits = retriever.retrieve(query, top_k=2)
+    # evidence alias
+    if evidence is None and sop_text:
+        evidence = sop_text
 
-    kb_text = ""
-    for h in kb_hits:
-        kb_text += f"\n\nSOURCE: {h.source} (score={h.score:.2f})\n{h.text}"
+    steps = list(next_steps or [])
+    refs = list(policy_refs or [])
 
-    user_payload = {
-        "decision": asdict(decision),
-        "primary_detection": primary_detection,
-        "all_detections": all_detections,
-        "sop_evidence": sop_evidence or "",
-        "knowledge": kb_text.strip(),
-        "output_schema": {
-            "customer_message": "string (short, friendly, no jargon)",
-            "operator_playbook": ["bullet strings (checklist)"],
-            "extra_photos_needed": ["bullet strings (specific angles)"],
-            "risks": ["bullet strings (what could be hidden/unsafe)"],
-        },
-    }
+    if action == "AUTO_APPROVE":
+        title = "Auto Approved"
+        badge = "success"
+        summary = "This case matches our auto-approval policy."
+    elif action == "ESCALATE":
+        title = "Escalated"
+        badge = "error"
+        summary = "This case should be escalated to a specialist assessor."
+    else:
+        title = "Needs Human Review"
+        badge = "warning"
+        summary = "A human operator should confirm the damage details before approval."
 
-    client = get_llm_client(cfg)
-    raw = client.chat(
-        system=SYSTEM_PROMPT,
-        user=json.dumps(user_payload, ensure_ascii=False, indent=2),
-        temperature=0.2,
-    )
+    why_bullets: List[str] = [
+        _format_primary(primary_detection, signal),
+        reason,
+    ]
 
-    parsed = _safe_json_parse(raw)
-    if not parsed:
-        return {
-            "enabled": True,
-            "error": "LLM returned non-JSON. (Enable developer mode to see raw.)",
-            "insight": {"raw": raw},
-            "kb_hits": [asdict(h) for h in kb_hits],
-        }
+    # If you want refs visible to user you can add; otherwise keep for dev/debug only
+    if refs:
+        why_bullets.append("Policy refs: " + ", ".join(refs))
 
-    # minimal normalization
-    parsed.setdefault("customer_message", "")
-    parsed.setdefault("operator_playbook", [])
-    parsed.setdefault("extra_photos_needed", [])
-    parsed.setdefault("risks", [])
     return {
-        "enabled": True,
-        "error": None,
-        "insight": parsed,
-        "kb_hits": [asdict(h) for h in kb_hits],
-        "raw": raw,
+        # UI-friendly
+        "title": title,
+        "badge": badge,
+        "summary": summary,
+
+        # app.py expects these
+        "why_bullets": why_bullets,
+        "next_steps": steps,
+        "policy_refs": refs,
+
+        # optional debug/evidence
+        "evidence": evidence,
     }
+
+
+def format_kb_insights(chunks: List[Any], max_items: int = 4) -> List[str]:
+    """
+    app.py expects iterable list of strings:
+      for it in insights: st.write(f"- {it}")
+
+    So return List[str] (not dict).
+    """
+    out: List[str] = []
+    for ch in (chunks or [])[:max_items]:
+        src = _pick(ch, "source", "unknown")
+        score = _as_float(_pick(ch, "score", 0.0))
+        text = (_pick(ch, "text", "") or "").strip()
+        first_line = text.splitlines()[0].strip() if text else ""
+        if first_line:
+            out.append(f"{src} (score={score:.2f}) — {first_line}")
+        else:
+            out.append(f"{src} (score={score:.2f})")
+    return out
+
+
+def build_expert_insight(**kwargs) -> Dict[str, Any]:
+    """
+    Your app uses build_expert_insight(...) as LLM-copilot entrypoint.
+    We proxy to agentic.expert_ai.build_expert_insight if it exists.
+    """
+    try:
+        from agentic.expert_ai import build_expert_insight as _impl  # type: ignore
+        return _impl(**kwargs)
+    except Exception as e:
+        return {
+            "enabled": False,
+            "error": f"Expert insight disabled: {e}",
+            "insight": None,
+            "raw": None,
+            "kb_hits": None,
+        }

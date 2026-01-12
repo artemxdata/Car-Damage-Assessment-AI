@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import os  # ✅ NEW
 import streamlit as st
 import cv2
 import numpy as np
@@ -16,13 +17,17 @@ from streamlit.components.v1 import html as st_html
 # ✅ Agentic imports
 from agentic.decision_agent import DecisionAgent
 from agentic.adapters import pick_primary_detection, detection_to_damage_signal
-
-# ✅ 6) NEW import
 from agentic.explainer import (
     build_customer_explanation,
     format_kb_insights,
     build_expert_insight,
 )
+
+# ✅ 3.1) NEW imports (WOW layer)
+from agentic.strategies import build_repair_strategies, build_damage_story
+
+# ✅ NEW: AI inpaint preview
+from agentic.vision.after_inpaint import make_repaired_after_preview
 
 # Import custom modules (optional; demo mode if missing)
 try:
@@ -695,6 +700,54 @@ def render_hero():
         st.markdown("</div>", unsafe_allow_html=True)
 
 
+# ✅ Wrapper to match the requested preview API (dict with RGB arrays)
+def make_repaired_preview(before_rgb: np.ndarray, primary: dict, intensity: float = 0.65):
+    """
+    Returns:
+      {
+        "after": after_rgb,
+        "diff": diff_rgb,
+        "mask": mask_rgb_or_gray
+      }
+    Internally uses agentic.vision.after_inpaint.make_repaired_after_preview (BGR-based).
+    """
+    if before_rgb is None or primary is None:
+        return {"after": before_rgb, "diff": None, "mask": None}
+
+    # input: RGB -> BGR
+    before_bgr = before_rgb[:, :, ::-1].copy()
+
+    # method is fixed here to "cv" as in your snippet label "CV inpaint preview"
+    res = make_repaired_after_preview(before_bgr, primary, intensity=float(intensity), method="cv")
+
+    after_bgr = res.after_bgr
+    diff_bgr = res.diff_bgr
+
+    # Best-effort mask extraction (if exists in result)
+    mask = getattr(res, "mask", None)
+    if mask is None:
+        mask = getattr(res, "mask_bgr", None)
+    if mask is None:
+        mask = getattr(res, "mask_gray", None)
+
+    # convert outputs to RGB for Streamlit
+    after_rgb = after_bgr[:, :, ::-1] if after_bgr is not None else None
+    diff_rgb = diff_bgr[:, :, ::-1] if diff_bgr is not None else None
+
+    if mask is None:
+        mask_vis = None
+    else:
+        if mask.ndim == 2:
+            mask_vis = mask  # grayscale ok
+        elif mask.ndim == 3 and mask.shape[2] == 3:
+            # assume BGR -> RGB
+            mask_vis = mask[:, :, ::-1]
+        else:
+            mask_vis = mask
+
+    return {"after": after_rgb, "diff": diff_rgb, "mask": mask_vis}
+
+
 def main():
     render_hero()
 
@@ -783,7 +836,9 @@ def main():
 
                     st.session_state.processed_image = processed_image
                     st.session_state.detections = detections
-                    st.session_state.original_image = np.array(image)
+
+                    # ✅ IMPORTANT: store ORIGINAL RGB image as numpy array
+                    st.session_state.original_image = np.array(image)  # RGB
                     st.session_state.image_info = image.size
 
                 st.success(f"Analysis complete. Found {len(detections)} damage areas.")
@@ -850,55 +905,105 @@ def main():
                 # Actions UI (your spike CTA layer)
                 render_decision_actions(decision, primary_detection=primary)
 
-                # ✅ 6) --- Expert Copilot (LLM) ---
-                with st.expander("Expert insight (practical guidance)"):
-                    st.caption("LLM generates practical guidance. It does NOT change the agent decision.")
-                    if st.button("✨ Generate expert guidance", use_container_width=True):
-                        with st.spinner("Generating expert guidance..."):
-                            result = build_expert_insight(
-                                decision=decision,
-                                primary_detection=primary,
-                                all_detections=detections,
-                                sop_evidence=getattr(decision, "evidence", None),
-                                knowledge_dir="knowledge",
+                # ==========================
+                # Product "WOW" Layer (Demo)
+                # ==========================
+                st.markdown("---")
+                st.markdown("## 🧠 Damage Story & Repair Strategy")
+
+                story = build_damage_story(primary)
+                strategies = build_repair_strategies(primary)
+
+                col_s1, col_s2 = st.columns([1.15, 0.85])
+
+                with col_s1:
+                    st.subheader("Damage Story (What happens next)")
+                    st.caption(
+                        f"Severity: **{story['severity']}** · Type: **{story['damage_type']}** · "
+                        f"Confidence: **{story['confidence']:.2f}**"
+                    )
+
+                    st.write("**Likely consequences (weeks → months):**")
+                    for c in story["consequences"]:
+                        st.write(f"- {c}")
+
+                    st.info(f"**Safety note:** {story['safety_note']}")
+                    st.write(f"**Resale impact:** {story['resale_impact'].upper()}")
+
+                with col_s2:
+                    st.subheader("Repair Strategy Simulator")
+                    st.caption("Heuristic estimates (demo). No external pricing APIs used.")
+
+                    for s in strategies:
+                        with st.expander(f"{s.name} · {s.risk_level} risk"):
+                            st.write(s.summary)
+                            st.write(
+                                f"**ETA:** {s.eta_days[0]}–{s.eta_days[1]} days"
+                                if s.eta_days[1] < 999
+                                else f"**ETA:** {s.eta_days[0]}+ days"
                             )
+                            st.write(
+                                f"**Estimated cost:** ${s.cost_usd[0]}–${s.cost_usd[1]}"
+                                if s.cost_usd[1] > 0
+                                else "**Estimated cost:** $0 now (risk of higher cost later)"
+                            )
+                            st.write("**Steps:**")
+                            for step in s.steps:
+                                st.write(f"- {step}")
 
-                        if not result.get("enabled"):
-                            st.info(result.get("error") or "LLM disabled.")
-                        else:
-                            if result.get("error"):
-                                st.warning(result["error"])
+                # ==========================
+                # Before / After Vision (Preview)
+                # ✅ INSERTED BLOCK (replaces the old one)
+                # ==========================
+                st.markdown("---")
+                st.markdown("## ✨ Before / After Vision (Preview)")
 
-                            insight = result.get("insight") or {}
+                preview_intensity = st.slider("Preview intensity", 0.0, 1.0, 0.65, 0.05)
 
-                            if "customer_message" in insight and insight["customer_message"]:
-                                st.subheader("Message to customer")
-                                st.write(insight["customer_message"])
+                before_rgb = st.session_state.original_image  # ORIGINAL image RGB
+                preview = make_repaired_preview(before_rgb, primary, intensity=preview_intensity)
 
-                            if insight.get("operator_playbook"):
-                                st.subheader("Operator playbook")
-                                for x in insight["operator_playbook"]:
-                                    st.write(f"- {x}")
+                after_rgb = preview["after"]
+                diff = preview["diff"]
+                mask = preview["mask"]
 
-                            if insight.get("extra_photos_needed"):
-                                st.subheader("Extra photos to request")
-                                for x in insight["extra_photos_needed"]:
-                                    st.write(f"- {x}")
+                cA, cB = st.columns(2)
+                with cA:
+                    st.image(before_rgb, caption="Before (original)", use_container_width=True)
+                with cB:
+                    st.image(after_rgb, caption="After (CV inpaint preview)", use_container_width=True)
 
-                            if insight.get("risks"):
-                                st.subheader("Risks / watchouts")
-                                for x in insight["risks"]:
-                                    st.write(f"- {x}")
+                # zoom to bbox
+                bbox = primary.get("bbox") if primary else None
+                if bbox:
+                    x1, y1, x2, y2 = bbox
+                    pad = 18
+                    h, w = before_rgb.shape[:2]
+                    x1 = max(0, x1 - pad)
+                    y1 = max(0, y1 - pad)
+                    x2 = min(w - 1, x2 + pad)
+                    y2 = min(h - 1, y2 + pad)
 
-                            # Debug-only (optional)
-                            if st.session_state.get("dev_mode"):
-                                st.markdown("---")
-                                st.caption("Debug: raw LLM / KB hits")
-                                if result.get("raw"):
-                                    st.code(result["raw"])
-                                if result.get("kb_hits"):
-                                    st.json(result["kb_hits"])
-                # --- end Expert Copilot ---
+                    z1, z2 = st.columns(2)
+                    with z1:
+                        st.image(before_rgb[y1:y2, x1:x2], caption="Zoom: Before", use_container_width=True)
+                    with z2:
+                        st.image(after_rgb[y1:y2, x1:x2], caption="Zoom: After", use_container_width=True)
+
+                st.markdown("#### Difference (what changed in preview)")
+                if diff is not None:
+                    st.image(diff, caption="Diff map (higher = more changed)", use_container_width=True)
+                else:
+                    st.info("Diff map is unavailable for this preview method.")
+
+                if mask is not None:
+                    with st.expander("Preview mask (where inpainting was applied)"):
+                        st.image(mask, caption="Mask", use_container_width=True)
+
+                st.caption(
+                    "Note: this is a UX simulation (CV inpainting), not real body repair. "
+                    "It helps visualize expected improvement."
+                )
 
                 # Optional: keep your retriever KB insights, but rename expander to avoid duplicate title
                 q = f"{signal.get('damage_type', '')} {signal.get('severity', '')} repair guidance checklist risks"
