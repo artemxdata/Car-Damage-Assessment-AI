@@ -28,24 +28,34 @@ This POC shows how **AI-assisted decisioning** can standardize assessment **with
 - ✅ Optional LLM guidance (non-critical, fully disableable)
 - ✅ Production-style Streamlit UX with strong demo value (“wow” moments)
 
-## 🏗 High-level architecture
-**Vehicle image**  
-↓  
-**CV Detection** (demo / model-backed)  
-↓  
-**Normalized Damage Signal**  
-↓  
-**Decision Agent**
-- rules & thresholds
-- policy YAML
-- SOP markdown evidence  
-↓  
-**Decision Output**
-- `AUTO_APPROVE`
-- `HUMAN_REVIEW`
-- `ESCALATE`  
-↓  
-**Human Override** (optional, always auditable)
+## 🏗 High-Level Architecture
+
+```text
+[ Vehicle Image ]
+        |
+        v
+[ CV Detection ]
+ (demo / model-backed)
+        |
+        v
+[ Normalized Damage Signal ]
+        |
+        v
+[ Decision Agent ]
+   ├─ Rules & thresholds
+   ├─ Policy (YAML)
+   └─ SOP evidence (Markdown)
+        |
+        v
+[ Decision Output ]
+   ├─ AUTO_APPROVE
+   ├─ HUMAN_REVIEW
+   └─ ESCALATE
+        |
+        v
+[ Human Override ]
+ (optional, always auditable)
+
 
 ## 🧭 Decision philosophy
 - Decisions are **deterministic by default**
