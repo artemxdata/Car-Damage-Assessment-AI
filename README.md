@@ -55,7 +55,7 @@ This POC shows how **AI-assisted decisioning** can standardize assessment **with
         v
 [ Human Override ]
  (optional, always auditable)
-
+```
 
 ## 🧭 Decision philosophy
 - Decisions are **deterministic by default**
