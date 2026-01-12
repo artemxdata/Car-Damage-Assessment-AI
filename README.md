@@ -126,13 +126,13 @@ streamlit run app.py
 # Open: http://localhost:8501
 ```
 
-🐳 **Docker (recommended)**
+##  🐳 **Docker (recommended)**
 
 **Build & run**  
 docker build -t car-damage-ai:cpu .  
 docker run --rm -p 8501:8501 car-damage-ai:cpu  
 
-**Docker Compose**  
+##  **Docker Compose**  
 docker-compose up --build  
 
 ---
@@ -157,8 +157,9 @@ LLM can be fully disabled without breaking the system.
 
 ---
 
-📁 **Project structure**
+## 📁 **Project structure**
 
+'''
 Car-Damage-Assessment-AI/  
 ├── app.py  
 ├── agentic/  
@@ -175,10 +176,9 @@ Car-Damage-Assessment-AI/
 ├── requirements.dev.txt  
 ├── requirements.docker.txt  
 └── README.md  
+'''
 
----
-
-🧪 **What this is (and is not)**
+##  🧪 **What this is (and is not)**
 
 **This is:**  
 - a serious internal POC  
@@ -192,7 +192,7 @@ Car-Damage-Assessment-AI/
 
 ---
 
-📈 **Future directions**
+##  📈 **Future directions**
 
 - API-first architecture  
 - model-backed CV inference  
@@ -203,13 +203,13 @@ Car-Damage-Assessment-AI/
 
 ---
 
-📄 **License**
+##  📄 **License**
 
 MIT License  
 
 ---
 
-👤 **Author**
+##  👤 **Author**
 
 Artem (@artemxdata) — AI / Agentic Systems Engineering  
 Focused on high-trust, explainable AI systems
