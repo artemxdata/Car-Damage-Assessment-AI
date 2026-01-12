@@ -137,6 +137,26 @@ docker run --rm -p 8501:8501 car-damage-ai:cpu
 ```bash
 docker-compose up --build  
 ```
+## 🧠 Runtime vs Source Architecture (Important Note)
+
+**The Docker setup intentionally runs a minimal runtime image.**
+
+**Core system intelligence — including:**
+
+- agentic decision logic
+- policy evaluation (YAML)
+- SOP evidence (Markdown)
+- decision trace and human override mechanisms
+
+—is part of the source code and is fully executed inside the container at runtime.
+
+**Development tooling, experimentation utilities, and optional LLM integrations are intentionally kept outside the runtime image to keep deployments:**
+
+- lightweight
+- deterministic
+- production-aligned
+
+**This separation mirrors real-world enterprise deployment practices, where runtime environments remain minimal while decision logic stays explicit, traceable, and auditable.**
 
 **Services:**  
 - app — Streamlit UI + decision engine  
