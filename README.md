@@ -160,7 +160,7 @@ LLM can be fully disabled without breaking the system.
 
 ## 📁 **Project structure**
 
-'''
+```bash
 Car-Damage-Assessment-AI/  
 ├── app.py  
 ├── agentic/  
@@ -177,7 +177,7 @@ Car-Damage-Assessment-AI/
 ├── requirements.dev.txt  
 ├── requirements.docker.txt  
 └── README.md  
-'''
+```
 
 ##  🧪 **What this is (and is not)**
 
