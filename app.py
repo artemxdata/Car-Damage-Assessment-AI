@@ -14,6 +14,9 @@ from datetime import datetime
 import textwrap
 from streamlit.components.v1 import html as st_html
 
+# ✅ NEW: decision trace
+from agentic.trace import build_decision_trace
+
 # ✅ Agentic imports
 from agentic.decision_agent import DecisionAgent
 from agentic.adapters import pick_primary_detection, detection_to_damage_signal
@@ -23,7 +26,7 @@ from agentic.explainer import (
     build_expert_insight,
 )
 
-# ✅ 3.1) NEW imports (WOW layer)
+# ✅ 3.1) WOW layer
 from agentic.strategies import build_repair_strategies, build_damage_story
 
 # ✅ NEW: AI inpaint preview
@@ -36,6 +39,7 @@ try:
 except ImportError:
     st.warning("Custom modules not found. Running in demo mode.")
     CarDamageDetector = None
+
 
 # Page configuration
 st.set_page_config(
@@ -474,7 +478,6 @@ def demo_damage_detection(image: Image.Image):
 
     img_with_annotations = img_array.copy()
 
-    # Annotation colors are part of the image (OpenCV), not UI CSS.
     colors = {
         "Scratch": (0, 255, 0),
         "Dent": (255, 165, 0),
@@ -869,6 +872,14 @@ def main():
                 signal = detection_to_damage_signal(primary)
                 decision = agent.decide(signal)
 
+                # ✅ 2.2 Decision trace
+                trace = build_decision_trace(primary_detection=primary, signal=signal, decision=decision)
+                with st.expander("🧾 Decision Trace (chain of evidence)", expanded=True):
+                    for i, step in enumerate(trace["steps"], 1):
+                        st.markdown(f"**{i}. {step['title']}**")
+                        for d in step["details"]:
+                            st.write(f"- {d}")
+
                 # Product-ready explanation (customer mode)
                 sop_text = getattr(decision, "evidence", None)  # SOP section text
                 expl = build_customer_explanation(
@@ -904,6 +915,58 @@ def main():
 
                 # Actions UI (your spike CTA layer)
                 render_decision_actions(decision, primary_detection=primary)
+
+                # ✅ 3) Human override loop (governance)
+                st.markdown("---")
+                st.subheader("Human Override (governance)")
+
+                override_on = st.checkbox("Override agent decision", value=False)
+
+                if override_on:
+                    col_o1, col_o2 = st.columns([1, 1])
+
+                    with col_o1:
+                        override_action = st.selectbox(
+                            "Override decision to",
+                            ["AUTO_APPROVE", "HUMAN_REVIEW", "ESCALATE"],
+                            index=["AUTO_APPROVE", "HUMAN_REVIEW", "ESCALATE"].index(decision.action)
+                            if decision.action in ["AUTO_APPROVE", "HUMAN_REVIEW", "ESCALATE"]
+                            else 1,
+                        )
+                        override_reason = st.selectbox(
+                            "Reason",
+                            [
+                                "False severity",
+                                "Poor image quality",
+                                "Hidden damage suspected",
+                                "Vehicle type / context mismatch",
+                                "Other",
+                            ],
+                        )
+
+                    with col_o2:
+                        override_comment = st.text_area(
+                            "Comment (optional)", height=90, placeholder="Short explanation..."
+                        )
+
+                    if st.button("✅ Submit override", use_container_width=True):
+                        event = {
+                            "timestamp": datetime.now().isoformat(timespec="seconds"),
+                            "original_action": decision.action,
+                            "original_reason": decision.reason,
+                            "override_action": override_action,
+                            "override_reason": override_reason,
+                            "override_comment": override_comment,
+                            "policy_refs": list(decision.policy_refs or []),
+                            "primary": primary,
+                        }
+                        st.session_state.setdefault("override_events", [])
+                        st.session_state["override_events"].append(event)
+                        st.success("Override recorded (demo).")
+
+                    if st.session_state.get("override_events"):
+                        with st.expander("Override log (demo)"):
+                            st.json(st.session_state["override_events"][-5:])
 
                 # ==========================
                 # Product "WOW" Layer (Demo)
@@ -953,7 +1016,6 @@ def main():
 
                 # ==========================
                 # Before / After Vision (Preview)
-                # ✅ INSERTED BLOCK (replaces the old one)
                 # ==========================
                 st.markdown("---")
                 st.markdown("## ✨ Before / After Vision (Preview)")
@@ -1005,7 +1067,7 @@ def main():
                     "It helps visualize expected improvement."
                 )
 
-                # Optional: keep your retriever KB insights, but rename expander to avoid duplicate title
+                # Optional: keep your retriever KB insights
                 q = f"{signal.get('damage_type', '')} {signal.get('severity', '')} repair guidance checklist risks"
                 chunks = agent.retriever.retrieve(q, top_k=3)
                 insights = format_kb_insights(chunks, max_items=4)
