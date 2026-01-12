@@ -1,3 +1,46 @@
+# Car Damage Assessment AI — Internal POC
+
+## Problem
+Vehicle damage intake and triage is slow, inconsistent, and expensive. Operators spend time on repetitive checks, while escalations are not always consistent across teams.
+
+## What this POC demonstrates
+- CV damage detection (demo/YOLO-compatible interface)
+- Policy-driven decisioning (AUTO_APPROVE / HUMAN_REVIEW / ESCALATE)
+- Explainability by design (Decision Trace)
+- Human-in-the-loop governance (Override + audit log)
+- Optional LLM guidance (non-critical, can be disabled)
+
+## Architecture (high level)
+- **UI**: Streamlit (single-page product demo)
+- **CV**: detections -> normalized signal
+- **Decision Agent**: rules + thresholds + policy refs
+- **Policies/SOP**: YAML policies + SOP markdown evidence
+- **Retrieval (optional)**: KB snippets for guidance
+- **LLM (optional)**: generates practical guidance; never changes decision
+
+## Decision philosophy
+- Deterministic decisions for trust and repeatability
+- AI assists operators, escalates uncertain cases, and provides traceable evidence
+- Human override is first-class
+
+## Why LLM is optional
+- Core decisions do not require generative AI
+- LLM is used only for customer/operator messaging and guidance
+- System remains functional with LLM disabled
+
+## Demo flow
+1. Upload vehicle image
+2. Detect damages (demo or model-backed)
+3. Agent makes decision + shows Decision Trace
+4. Operator may override decision (logged)
+5. Repair Strategy Simulator + Before/After Preview for UX “wow”
+
+## How to run
+```bash
+cd ~/Car-Damage-Assessment-AI
+source .venv/bin/activate
+streamlit run app.py
+
 # 🚗 Car-Damage-Assessment-AI
 
 *Automated vehicle damage detection and assessment using Computer Vision and Deep Learning*
