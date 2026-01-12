@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import streamlit as st
@@ -12,14 +13,16 @@ from datetime import datetime
 import textwrap
 from streamlit.components.v1 import html as st_html
 
-# ✅ 8.1) add import (and used below)
-from agentic.expert_ai import generate_expert_commentary
-
-# ✅ 3.1) add import
-from agentic.explainer import build_customer_explanation, format_kb_insights
-
+# ✅ Agentic imports
 from agentic.decision_agent import DecisionAgent
 from agentic.adapters import pick_primary_detection, detection_to_damage_signal
+
+# ✅ 6) NEW import
+from agentic.explainer import (
+    build_customer_explanation,
+    format_kb_insights,
+    build_expert_insight,
+)
 
 # Import custom modules (optional; demo mode if missing)
 try:
@@ -34,10 +37,11 @@ st.set_page_config(
     page_title="Car Damage Assessment AI",
     page_icon="🚗",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-st.markdown(r"""
+st.markdown(
+    r"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
@@ -308,7 +312,9 @@ h2{
   margin-bottom: 0.25rem;
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 def hero_svg_car_damage() -> str:
@@ -702,6 +708,8 @@ def main():
 
         # ✅ dev mode toggle
         developer_mode = st.checkbox("Developer mode (show debug)", value=False)
+        # ✅ IMPORTANT: make session_state key available everywhere
+        st.session_state["dev_mode"] = developer_mode
 
         st.markdown("### Detection Parameters")
         confidence_threshold = st.slider(
@@ -724,9 +732,6 @@ def main():
         enhance_image_option = st.checkbox("Enable Image Enhancement", value=True)
         show_confidence = st.checkbox("Display Confidence Scores", value=True)
         generate_report = st.checkbox("Generate Assessment Report", value=True)
-
-        # ✅ 8.2) expert AI toggle (safe default False)
-        enable_expert_ai = st.checkbox("Enable AI Expert Insight (LLM)", value=False)
 
         st.markdown("---")
         st.markdown(
@@ -845,44 +850,63 @@ def main():
                 # Actions UI (your spike CTA layer)
                 render_decision_actions(decision, primary_detection=primary)
 
-                # --- Expert AI layer (non-decision) ---
-                st.markdown("#### Expert insight")
+                # ✅ 6) --- Expert Copilot (LLM) ---
+                with st.expander("Expert insight (practical guidance)"):
+                    st.caption("LLM generates practical guidance. It does NOT change the agent decision.")
+                    if st.button("✨ Generate expert guidance", use_container_width=True):
+                        with st.spinner("Generating expert guidance..."):
+                            result = build_expert_insight(
+                                decision=decision,
+                                primary_detection=primary,
+                                all_detections=detections,
+                                sop_evidence=getattr(decision, "evidence", None),
+                                knowledge_dir="knowledge",
+                            )
 
-                try:
-                    # local import to keep this file minimal + no global side effects
-                    from pathlib import Path
+                        if not result.get("enabled"):
+                            st.info(result.get("error") or "LLM disabled.")
+                        else:
+                            if result.get("error"):
+                                st.warning(result["error"])
 
-                    expert = generate_expert_commentary(
-                        decision_action=decision.action,
-                        decision_reason=decision.reason,
-                        sop_evidence=getattr(decision, "evidence", None),
-                        signal=signal,
-                        primary_detection=primary,
-                        knowledge_dir=Path("knowledge"),
-                        enable_llm=enable_expert_ai,
-                        top_k=3,
-                    )
+                            insight = result.get("insight") or {}
 
-                    with st.expander("Expert insight (practical guidance)"):
-                        st.markdown(expert.text)
+                            if "customer_message" in insight and insight["customer_message"]:
+                                st.subheader("Message to customer")
+                                st.write(insight["customer_message"])
 
-                        # маленький “debug footer” можно показывать только в developer mode
-                        if st.session_state.get("dev_mode", False):
-                            st.caption(f"LLM used: {expert.used_llm} | KB hits: {expert.kb_hits}")
+                            if insight.get("operator_playbook"):
+                                st.subheader("Operator playbook")
+                                for x in insight["operator_playbook"]:
+                                    st.write(f"- {x}")
 
-                except Exception as e:
-                    st.info("Expert insight is temporarily unavailable.")
-                    if st.session_state.get("dev_mode", False):
-                        st.exception(e)
-                # --- end expert layer ---
+                            if insight.get("extra_photos_needed"):
+                                st.subheader("Extra photos to request")
+                                for x in insight["extra_photos_needed"]:
+                                    st.write(f"- {x}")
 
-                # Expert insights (RAG) — customer view (existing)
+                            if insight.get("risks"):
+                                st.subheader("Risks / watchouts")
+                                for x in insight["risks"]:
+                                    st.write(f"- {x}")
+
+                            # Debug-only (optional)
+                            if st.session_state.get("dev_mode"):
+                                st.markdown("---")
+                                st.caption("Debug: raw LLM / KB hits")
+                                if result.get("raw"):
+                                    st.code(result["raw"])
+                                if result.get("kb_hits"):
+                                    st.json(result["kb_hits"])
+                # --- end Expert Copilot ---
+
+                # Optional: keep your retriever KB insights, but rename expander to avoid duplicate title
                 q = f"{signal.get('damage_type', '')} {signal.get('severity', '')} repair guidance checklist risks"
                 chunks = agent.retriever.retrieve(q, top_k=3)
                 insights = format_kb_insights(chunks, max_items=4)
 
                 if insights:
-                    with st.expander("Expert insight (practical guidance)"):
+                    with st.expander("KB insight (retrieved guidance)"):
                         for it in insights:
                             st.write(f"- {it}")
 
