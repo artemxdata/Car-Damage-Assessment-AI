@@ -158,6 +158,8 @@ docker-compose up --build
 
 **This separation mirrors real-world enterprise deployment practices, where runtime environments remain minimal while decision logic stays explicit, traceable, and auditable.**
 
+---
+
 **Services:**  
 - app — Streamlit UI + decision engine  
 
