@@ -47,3 +47,6 @@ mlruns/
 
 # OS
 Thumbs.db
+
+# Allow trained model weights
+!models/best.pt
