@@ -1,13 +1,13 @@
-# 🚗 Car Damage Assessment AI — Internal POC
+# 🚗 Car Damage Assessment AI
 
 [![CI](https://github.com/artemxdata/Car-Damage-Assessment-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/artemxdata/Car-Damage-Assessment-AI/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![FastAPI](https://img.shields.io/badge/API-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
+[![YOLOv8](https://img.shields.io/badge/CV-YOLOv8-FF6F61.svg)](https://docs.ultralytics.com/)
 
-> **Internal Proof of Concept**  
-> Designed as an internal demo for **insurance, fleet management, and automotive damage decision workflows**, where explainability, auditability, and human control are critical.  
-> High-trust vehicle damage assessment system combining Computer Vision, deterministic policy-driven decisioning, human-in-the-loop governance, and optional LLM guidance.
+> High-trust vehicle damage assessment system combining **trained YOLOv8 Computer Vision**, deterministic policy-driven decisioning, human-in-the-loop governance, and optional LLM guidance.  
+> Designed for **insurance, fleet management, car rental, and automotive damage workflows**, where explainability, auditability, and human control are critical.
 
 ### 💼 Why this matters commercially
 
@@ -16,6 +16,29 @@ This system demonstrates how AI-assisted decisioning can:
 * **Reduce operator workload** by auto-approving low-risk, well-defined cases
 * **Standardize decisions** across teams, regions, and partners using explicit policies
 * **Accelerate triage and escalation**, improving customer response times without sacrificing trust or control
+
+---
+
+## 📊 Model performance
+
+The CV model is trained on the [CarDD dataset](https://cardd-ustc.github.io/) — the first public large-scale dataset for car damage detection (4,000+ images, 9,000+ annotations).
+
+| Metric | Value |
+|--------|-------|
+| **mAP@50** | **0.581** |
+| **mAP@50-95** | **0.409** |
+| **Precision** | **0.675** |
+| **Recall** | **0.534** |
+| Model | YOLOv8n (nano) |
+| Image size | 640×640 |
+| Training epochs | 50 |
+| Model size | 5.9 MB |
+
+**10 damage classes:** crack, crash, dent, dislocated part, glass shatter, lamp broken, no part, rub, scratch, tire flat
+
+Training notebook: [`notebooks/train_yolov8_cardd.ipynb`](notebooks/train_yolov8_cardd.ipynb) — fully reproducible on Google Colab (T4 GPU, ~20 min).
+
+---
 
 ## 🧠 Problem
 
@@ -27,16 +50,16 @@ Vehicle damage intake and triage remains slow, inconsistent, and expensive:
 * Auditability and explainability are often missing
 * Humans are either overloaded or bypassed entirely
 
-This POC shows how **AI-assisted decisioning** can standardize assessment **without removing human control**.
+This system shows how **AI-assisted decisioning** can standardize assessment **without removing human control**.
 
-## 🎯 What this POC demonstrates
+## 🎯 What this project demonstrates
 
-* ✅ Computer Vision damage detection (demo / model-backed, YOLO-compatible interface)
+* ✅ **Trained YOLOv8 model** on real damage data (CarDD, 10 classes, mAP@50: 0.58)
 * ✅ Deterministic, policy-driven decisioning (`AUTO_APPROVE`, `HUMAN_REVIEW`, `ESCALATE`)
 * ✅ Explainability by design (Decision Trace + SOP evidence)
 * ✅ Human-in-the-loop governance (override + audit log)
 * ✅ Optional LLM guidance (non-critical, fully disableable)
-* ✅ Production-style Streamlit UX with strong demo value ("wow" moments)
+* ✅ Production-style Streamlit UX with strong demo value
 * ✅ **REST API** for integration into existing claims pipelines
 * ✅ **Automated test suite** (22 tests) with CI/CD pipeline
 
@@ -46,8 +69,8 @@ This POC shows how **AI-assisted decisioning** can standardize assessment **with
 [ Vehicle Image ]
         |
         v
-[ CV Detection ]
- (demo / model-backed)
+[ YOLOv8 Detection ]
+ (trained on CarDD — 10 damage classes)
         |
         v
 [ Normalized Damage Signal ]
@@ -128,8 +151,8 @@ curl -X POST http://localhost:8000/assess \
 ```json
 {
   "assessment_id": "a1b2c3d4e5f6",
-  "timestamp": "2026-05-11T20:30:00+00:00",
-  "processing_time_ms": 47,
+  "timestamp": "2026-05-17T17:30:00+00:00",
+  "processing_time_ms": 120,
   "damages_detected": [
     {
       "damage_type": "scratch",
@@ -154,9 +177,9 @@ curl -X POST http://localhost:8000/assess \
       "evidence": "Policy: Moderate damage detected → human review recommended"
     }
   ],
-  "model_version": "demo-v0.1",
-  "policy_version": "v1.0-demo",
-  "cv_backend": "demo",
+  "model_version": "yolov8n-cardd-v1",
+  "policy_version": "v1.0",
+  "cv_backend": "yolov8",
   "human_review_required": true
 }
 ```
@@ -171,8 +194,8 @@ curl http://localhost:8000/health | python -m json.tool
 {
   "status": "healthy",
   "version": "0.1.0",
-  "cv_available": false,
-  "agent_available": false,
+  "cv_available": true,
+  "agent_available": true,
   "uptime_seconds": 12.3
 }
 ```
@@ -182,7 +205,7 @@ curl http://localhost:8000/health | python -m json.tool
 ## 🖥 Demo flow (Streamlit UI)
 
 1. Upload vehicle image
-2. Detect visible damages (demo or CV-backed)
+2. YOLOv8 detects visible damages (10 classes)
 3. Normalize detections into a damage signal
 4. Decision Agent evaluates policies and thresholds
 5. Decision Trace explains *why* the outcome was chosen
@@ -206,7 +229,7 @@ Recommended order:
 
 * **UI**: Streamlit
 * **API**: FastAPI + Uvicorn
-* **Computer Vision**: OpenCV (YOLO-compatible interface)
+* **Computer Vision**: YOLOv8n (trained on CarDD, 10 damage classes)
 * **Decisioning**: rule-based agent + policy YAML
 * **Policies / SOPs**: Markdown + YAML
 * **Retrieval (optional)**: lightweight KB lookup
@@ -216,7 +239,7 @@ Recommended order:
 * **CI/CD**: GitHub Actions
 * **Runtime**: Python 3.11+
 * **Deployment**: Docker & Docker Compose
-* GPU dependencies are **not required**
+* GPU dependencies are **not required** (CPU inference supported)
 
 ## 📦 Dependency strategy
 
@@ -343,11 +366,15 @@ Car-Damage-Assessment-AI/
 ├── agentic/                  # Decision agent logic
 ├── policies/                 # YAML policy definitions
 ├── knowledge/                # SOP evidence (Markdown)
-├── models/                   # CV model weights
+├── models/
+│   ├── best.pt               # YOLOv8n trained weights (CarDD)
+│   └── training_config.json  # Training metrics & config
+├── notebooks/
+│   └── train_yolov8_cardd.ipynb  # Training notebook (Colab)
 ├── data/                     # Sample images
 ├── docs/                     # Documentation & screenshots
 ├── outputs/                  # Detection output images
-├── tests/                    # Automated test suite
+├── tests/
 │   └── test_api.py           # API endpoint tests (22 tests)
 ├── .github/
 │   └── workflows/
@@ -366,27 +393,27 @@ Car-Damage-Assessment-AI/
 
 **This is:**
 
-* a serious internal POC
-* a decision-centric architecture demo
+* a working vehicle damage detection system with a trained model
+* a decision-centric architecture with full auditability
 * a strong product & UX prototype
 * an integration-ready system (REST API)
 
 **This is NOT:**
 
-* a production insurance system
-* a fully trained CV model
+* a production insurance system (requires domain-specific fine-tuning)
 * a replacement for human judgment
 
 ---
 
 ## 📈 Future directions
 
-* Model-backed CV inference (YOLOv8 on real damage datasets)
+* Improve model accuracy with larger datasets and YOLOv8m/l
 * Multi-image / video ingestion
-* Policy versioning & analytics
-* Audit log persistence
+* Policy versioning & analytics dashboard
+* Audit log persistence (database-backed)
 * PDF / claims system export
 * Landing page & pilot program
+* Additional verticals (property damage, construction QC)
 
 ---
 
