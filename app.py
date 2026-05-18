@@ -569,7 +569,7 @@ def generate_assessment_report(detections, image_info):
     avg_confidence = np.mean([d["confidence"] for d in detections])
 
     severity_priority = {"Severe": 3, "Moderate": 2, "Light": 1}
-    highest_severity = max([severity_priority.get(d["severity"], 0) for d in detections])
+    highest_severity = max([severity_priority.get(d["severity"], 0) for d in detections]) if detections else 0
     severity_names = {3: "Severe", 2: "Moderate", 1: "Light"}
 
     report = {
@@ -794,8 +794,8 @@ def main():
             """
         #### System Information
         **Model**: YOLOv8 Custom Trained  
-        **Accuracy**: 87% mAP@0.5  
-        **Classes**: 4 damage types  
+        **Accuracy**: 58.1% mAP@0.5  
+        **Classes**: 10 damage types  
         **Processing**: Real-time inference  
         """
         )
@@ -835,7 +835,31 @@ def main():
 
                     time.sleep(2)
 
-                    processed_image, detections = demo_damage_detection(image)
+                    # Use real YOLOv8 model if available, otherwise fallback to demo
+                    if CarDamageDetector is not None:
+                        try:
+                            detector = CarDamageDetector(confidence_threshold=confidence_threshold)
+                            result = detector.detect_damage(image)
+                            det_list = result.get("damages", result.get("detections", []))
+                            annotated = detector.annotate_image(image, det_list)
+                            # Convert det_list to format app.py expects
+                            detections = []
+                            for d in det_list:
+                                detections.append({
+                                    "type": d.get("type", "unknown"),
+                                    "confidence": d.get("confidence", 0.5),
+                                    "severity": d.get("severity", "light"),
+                                    "bbox": d.get("bbox", [0,0,0,0]),
+                                    "area_percentage": d.get("area_percentage", 0),
+                                    "repair_cost": d.get("repair_cost", 0),
+                                    "location": d.get("location", "unknown"),
+                                })
+                            processed_image = annotated
+                        except Exception as e:
+                            st.warning(f"Model error: {e}. Using demo mode.")
+                            processed_image, detections = demo_damage_detection(image)
+                    else:
+                        processed_image, detections = demo_damage_detection(image)
 
                     st.session_state.processed_image = processed_image
                     st.session_state.detections = detections
@@ -1201,3 +1225,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

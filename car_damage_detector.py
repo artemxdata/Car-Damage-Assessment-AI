@@ -30,17 +30,26 @@ class CarDamageDetector:
             confidence_threshold (float): Minimum confidence for detections
         """
         self.confidence_threshold = confidence_threshold
-        self.model_path = model_path or "yolov8n.pt"  # Default to nano model
+        self.model_path = model_path or str(Path(__file__).parent / "models" / "best.pt")  # Default to nano model
         self.device = self._get_device()
         self.model = None
         self.class_names = {
-            0: "scratch",
-            1: "dent", 
-            2: "broken_part",
-            3: "paint_damage"
+            0: "crack",
+            1: "crash",
+            2: "dent",
+            3: "dislocated_part",
+            4: "glass_shatter",
+            5: "lamp_broken",
+            6: "no_part",
+            7: "rub",
+            8: "scratch",
+            9: "tire_flat"
         }
         
         # Damage severity mapping based on area and type
+        # Auto-load model on init
+        self._load_model()
+
         self.severity_mapping = {
             "scratch": {"light": (0, 5), "moderate": (5, 15), "severe": (15, 100)},
             "dent": {"light": (0, 3), "moderate": (3, 10), "severe": (10, 100)},
@@ -214,7 +223,7 @@ class CarDamageDetector:
                     
                     # Map class ID to damage type (for demo, we'll simulate)
                     # In a real trained model, class_id would map to actual damage types
-                    damage_type = self._simulate_damage_classification(bbox, img_array)
+                    damage_type = self.class_names.get(class_id, f'class_{class_id}')
                     
                     # Calculate damage area percentage
                     area_percentage = self._calculate_damage_area(bbox, original_shape)
@@ -463,3 +472,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
