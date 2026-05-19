@@ -44,7 +44,7 @@ if str(PROJECT_ROOT) not in sys.path:
 # Import existing project modules (graceful fallback if not available)
 # ---------------------------------------------------------------------------
 try:
-    from car_damage_detector import detect_damage
+    from car_damage_detector import CarDamageDetector
     CV_AVAILABLE = True
     logger.info("CV detection module loaded successfully")
 except ImportError:
@@ -69,6 +69,12 @@ class DamageDetection(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0, description="Detection confidence score")
     severity: str = Field(..., description="Severity level: minor, moderate, severe")
     location: str = Field("unknown", description="Approximate location on vehicle")
+    bbox: list = Field(default_factory=list, description="Bounding box [x1, y1, x2, y2]")
+    area_percentage: float = Field(0.0, description="Percentage of image area affected")
+    estimated_cost: int = Field(0, description="Estimated repair cost in USD")
+    bbox: list = Field(default_factory=list, description="Bounding box [x1, y1, x2, y2]")
+    area_percentage: float = Field(0.0, description="Percentage of image area affected")
+    estimated_cost: int = Field(0, description="Estimated repair cost in USD")
 
 
 class DecisionTrace(BaseModel):
@@ -304,7 +310,24 @@ async def assess_damage(
     # Step 1: Damage detection
     if CV_AVAILABLE:
         try:
-            raw_detections = detect_damage(image_bytes)
+            from PIL import Image as PILImage
+            import io
+            detector = CarDamageDetector(confidence_threshold=0.25)
+            pil_img = PILImage.open(io.BytesIO(image_bytes))
+            result = detector.detect_damage(pil_img)
+            raw_detections_raw = result.get('damages', [])
+            # Normalize keys for API response
+            raw_detections = []
+            for det in raw_detections_raw:
+                raw_detections.append({
+                    'damage_type': det.get('type', det.get('damage_type', 'unknown')),
+                    'confidence': det.get('confidence', 0.5),
+                    'severity': det.get('severity', 'minor'),
+                    'location': det.get('location', 'unknown'),
+                    'bbox': det.get('bbox', []),
+                    'area_percentage': det.get('area_percentage', 0),
+                    'estimated_cost': det.get('estimated_cost', 0),
+                })
             cv_backend = "model-backed"
         except Exception as e:
             logger.error(f"[{assessment_id}] CV detection failed: {e}, falling back to demo")
@@ -321,6 +344,9 @@ async def assess_damage(
             confidence=d.get("confidence", 0.5),
             severity=d.get("severity", "minor"),
             location=d.get("location", "unknown"),
+            bbox=d.get("bbox", []),
+            area_percentage=d.get("area_percentage", 0.0),
+            estimated_cost=d.get("estimated_cost", 0),
         )
         for d in raw_detections
     ]

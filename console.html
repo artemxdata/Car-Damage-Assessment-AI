@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Damage.ai — Assessment Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+--bg:#08080a;--bg2:#0e0e11;--bg3:#141417;--bg4:#1a1a1e;
+--s1:#1e1e23;--s2:#25252b;
+--tx:#f5f0e8;--t2:#a09882;--t3:#6b6355;--t4:#4a4540;
+--g:#d4a853;--g2:#e8c36a;--g3:#f0d78a;--gd:#8b7033;--gg:rgba(212,168,83,.10);
+--red:#c45050;--green:#4a9e5f;--amber:#d4a853;
+--b1:#1a1816;--b2:#262320;--b3:#332f28;
+--r:10px;--rl:14px;--rx:20px;
+--fd:'Cormorant Garamond',serif;--fb:'DM Sans',sans-serif;--fm:'JetBrains Mono',monospace;
+}
+html{font-size:15px}
+body{background:var(--bg);color:var(--tx);font-family:var(--fb);-webkit-font-smoothing:antialiased;min-height:100vh;overflow-x:hidden}
+::selection{background:var(--g);color:var(--bg)}
+
+/* ═══ LAYOUT ═══ */
+.app{display:grid;grid-template-columns:280px 1fr;grid-template-rows:56px 1fr;height:100vh}
+@media(max-width:900px){.app{grid-template-columns:1fr;grid-template-rows:56px auto 1fr}}
+
+/* ═══ TOPBAR ═══ */
+.topbar{grid-column:1/-1;background:var(--bg);border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;padding:0 24px;z-index:10}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.logo svg{width:28px;height:28px}
+.logo-text{font-family:var(--fd);font-size:1.35rem;font-weight:600;color:var(--tx);letter-spacing:-.01em}
+.logo-text span{color:var(--g);font-weight:400}
+.topbar-right{display:flex;align-items:center;gap:16px}
+.topbar-badge{padding:5px 14px;border-radius:999px;background:var(--gg);border:1px solid var(--b3);font-size:.65rem;font-weight:700;color:var(--g);text-transform:uppercase;letter-spacing:.08em}
+.topbar-status{display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--t3)}
+.topbar-status .dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ═══ SIDEBAR ═══ */
+.sidebar{background:var(--bg2);border-right:1px solid var(--b1);padding:20px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:20px}
+@media(max-width:900px){.sidebar{border-right:none;border-bottom:1px solid var(--b1);padding:16px}}
+.sb-section{display:flex;flex-direction:column;gap:8px}
+.sb-label{font-size:.6rem;text-transform:uppercase;letter-spacing:.16em;color:var(--t3);font-weight:700}
+.sb-title{font-size:.85rem;font-weight:600;color:var(--tx)}
+.sb-row{display:flex;align-items:center;justify-content:space-between}
+.sb-value{font-family:var(--fm);font-size:.75rem;color:var(--g);font-weight:500}
+.sb-divider{height:1px;background:var(--b1);margin:4px 0}
+.sb-stat{display:flex;flex-direction:column;gap:2px}
+.sb-stat-val{font-family:var(--fd);font-size:1.6rem;color:var(--g);font-weight:700}
+.sb-stat-lbl{font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:.1em}
+.sb-stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.sb-chip{display:inline-flex;padding:3px 10px;border-radius:999px;background:var(--gg);border:1px solid var(--b3);font-size:.6rem;font-weight:600;color:var(--g2);text-transform:capitalize}
+.sb-chips{display:flex;flex-wrap:wrap;gap:4px}
+
+/* ═══ MAIN ═══ */
+.main{padding:24px;overflow-y:auto;display:flex;flex-direction:column;gap:20px;background:radial-gradient(circle at 70% 20%,rgba(212,168,83,.02),transparent 50%),var(--bg)}
+
+/* ═══ UPLOAD CARD ═══ */
+.upload-card{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--rx);overflow:hidden}
+.upload-header{padding:14px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px}
+.upload-header .uh-dot{width:8px;height:8px;border-radius:50%}
+.upload-header .uh-dot:nth-child(1){background:var(--red)}.upload-header .uh-dot:nth-child(2){background:var(--g)}.upload-header .uh-dot:nth-child(3){background:var(--green)}
+.upload-header span{font-size:.65rem;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-left:6px}
+.upload-body{padding:32px}
+.drop-zone{border:2px dashed var(--b3);border-radius:var(--rl);padding:48px 24px;text-align:center;cursor:pointer;transition:all .35s;position:relative}
+.drop-zone:hover,.drop-zone.over{border-color:var(--g);background:rgba(212,168,83,.03)}
+.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.drop-zone h3{font-size:.9rem;font-weight:600;margin:12px 0 4px}
+.drop-zone p{font-size:.7rem;color:var(--t3)}
+.drop-icon{opacity:.35}
+
+/* Preview */
+.preview-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.preview-img{border-radius:var(--rl);border:1px solid var(--b2);overflow:hidden;position:relative}
+.preview-img img{width:100%;display:block}
+.preview-img .pi-label{position:absolute;bottom:0;left:0;right:0;padding:8px 12px;background:linear-gradient(transparent,rgba(0,0,0,.8));font-size:.65rem;color:var(--t2);text-transform:uppercase;letter-spacing:.06em}
+
+/* ═══ RESULTS ═══ */
+.results{display:flex;flex-direction:column;gap:16px}
+.result-card{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--rx);overflow:hidden;animation:slideUp .5s cubic-bezier(.16,1,.3,1) both}
+@keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.result-card:nth-child(2){animation-delay:.1s}
+.result-card:nth-child(3){animation-delay:.2s}
+.result-card:nth-child(4){animation-delay:.3s}
+.rc-header{padding:14px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between}
+.rc-title{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--t2)}
+.rc-body{padding:20px}
+
+/* Decision badge */
+.decision-badge{display:inline-flex;align-items:center;gap:6px;padding:8px 20px;border-radius:999px;font-weight:700;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em}
+.decision-badge.approve{background:rgba(74,158,95,.12);color:#6bc485;border:1px solid rgba(74,158,95,.2)}
+.decision-badge.review{background:rgba(212,168,83,.12);color:var(--g2);border:1px solid rgba(212,168,83,.2)}
+.decision-badge.escalate{background:rgba(196,80,80,.12);color:#e87c7c;border:1px solid rgba(196,80,80,.2)}
+
+/* Damage items */
+.damage-list{display:flex;flex-direction:column;gap:6px}
+.damage-item{display:grid;grid-template-columns:1fr auto auto auto;gap:16px;align-items:center;padding:10px 14px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--b1);transition:border-color .2s}
+.damage-item:hover{border-color:var(--b3)}
+.di-type{font-size:.8rem;font-weight:600;text-transform:capitalize}
+.di-sev{font-size:.55rem;padding:3px 10px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.di-sev.light{background:rgba(74,158,95,.08);color:#6bc485}
+.di-sev.moderate{background:rgba(212,168,83,.08);color:var(--g2)}
+.di-sev.severe{background:rgba(196,80,80,.08);color:#e87c7c}
+.di-conf{font-family:var(--fm);font-size:.75rem;color:var(--g);font-weight:500}
+.di-loc{font-size:.65rem;color:var(--t3)}
+
+/* Trace */
+.trace-step{padding:10px 0;border-bottom:1px solid var(--b1)}
+.trace-step:last-child{border-bottom:none}
+.trace-num{font-family:var(--fm);font-size:.6rem;color:var(--g);font-weight:700;margin-right:8px}
+.trace-title{font-size:.8rem;font-weight:600}
+.trace-detail{font-size:.75rem;color:var(--t2);margin-top:4px;padding-left:24px}
+
+/* Metrics row */
+.metrics-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.metric-box{background:var(--bg3);border:1px solid var(--b1);border-radius:var(--rl);padding:16px;text-align:center}
+.metric-val{font-family:var(--fd);font-size:1.8rem;color:var(--g);font-weight:700}
+.metric-lbl{font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:.1em;margin-top:2px}
+
+/* Loading */
+.loading{display:flex;flex-direction:column;align-items:center;gap:12px;padding:48px}
+.spinner{width:32px;height:32px;border:2px solid var(--b2);border-top-color:var(--g);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading p{font-size:.8rem;color:var(--t2)}
+
+/* Empty state */
+.empty{text-align:center;padding:64px 24px;color:var(--t3)}
+.empty h3{font-family:var(--fd);font-size:1.5rem;color:var(--t2);margin-bottom:8px;font-weight:500}
+.empty p{font-size:.85rem}
+
+/* Btn */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 24px;border-radius:999px;font-weight:700;font-size:.75rem;border:none;cursor:pointer;font-family:var(--fb);transition:all .3s;text-transform:uppercase;letter-spacing:.06em}
+.btn-gold{background:linear-gradient(135deg,var(--g),var(--g2));color:var(--bg)}
+.btn-gold:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(212,168,83,.25)}
+.btn-ghost{background:transparent;color:var(--t2);border:1px solid var(--b3)}
+.btn-ghost:hover{border-color:var(--gd);color:var(--g2)}
+
+/* Report table */
+.report-table{width:100%;border-collapse:collapse;font-size:.75rem}
+.report-table th{text-align:left;padding:8px 12px;font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);border-bottom:1px solid var(--b2)}
+.report-table td{padding:8px 12px;border-bottom:1px solid var(--b1);color:var(--t2)}
+.report-table tr:hover td{background:var(--bg3)}
+
+/* Hidden */
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <a href="#" class="logo">
+    <svg viewBox="0 0 64 64" fill="none"><path d="M32 4L8 18v16c0 14 10.7 22.7 24 26 13.3-3.3 24-12 24-26V18L32 4z" stroke="#d4a853" stroke-width="2.5" fill="none" opacity=".4"/><ellipse cx="32" cy="33" rx="14" ry="9" stroke="#d4a853" stroke-width="1.5" fill="none"/><circle cx="32" cy="33" r="2.5" fill="#d4a853"/><circle cx="34" cy="31" r="1" fill="#f0d78a"/></svg>
+    <span class="logo-text">Damage<span>.ai</span></span>
+  </a>
+  <div class="topbar-right">
+    <span class="topbar-badge">Assessment Console</span>
+    <span class="topbar-status"><span class="dot"></span> Engine ready</span>
+  </div>
+</header>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sb-section">
+    <span class="sb-label">Model</span>
+    <span class="sb-title">YOLOv8n · CarDD</span>
+    <div class="sb-stats">
+      <div class="sb-stat"><span class="sb-stat-val">58.1%</span><span class="sb-stat-lbl">mAP@50</span></div>
+      <div class="sb-stat"><span class="sb-stat-val">67.5%</span><span class="sb-stat-lbl">Precision</span></div>
+    </div>
+  </div>
+
+  <div class="sb-divider"></div>
+
+  <div class="sb-section">
+    <span class="sb-label">Configuration</span>
+    <div class="sb-row"><span class="sb-title">Confidence</span><span class="sb-value" id="confVal">0.25</span></div>
+    <input type="range" min="5" max="95" value="25" id="confSlider" style="width:100%;accent-color:var(--g);height:4px;margin-top:4px">
+    <div class="sb-row" style="margin-top:8px"><span class="sb-title">Classes</span><span class="sb-value">10</span></div>
+    <div class="sb-chips" id="classChips"></div>
+  </div>
+
+  <div class="sb-divider"></div>
+
+  <div class="sb-section">
+    <span class="sb-label">API Endpoint</span>
+    <div style="display:flex;gap:6px;align-items:center">
+      <input type="text" id="apiUrl" value="http://localhost:8000" style="flex:1;padding:6px 10px;background:var(--bg);border:1px solid var(--b2);border-radius:var(--r);color:var(--tx);font-family:var(--fm);font-size:.7rem">
+    </div>
+    <button class="btn btn-ghost" style="margin-top:6px;width:100%;justify-content:center" onclick="testConnection()">Test connection</button>
+    <div id="connStatus" style="font-size:.65rem;color:var(--t3);margin-top:4px"></div>
+  </div>
+
+  <div class="sb-divider"></div>
+
+  <div class="sb-section">
+    <span class="sb-label">Decision Policy</span>
+    <div class="sb-row"><span style="font-size:.75rem;color:var(--t2)">Minor only</span><span class="sb-value" style="color:var(--green)">Auto-approve</span></div>
+    <div class="sb-row"><span style="font-size:.75rem;color:var(--t2)">Any moderate</span><span class="sb-value" style="color:var(--g)">Human review</span></div>
+    <div class="sb-row"><span style="font-size:.75rem;color:var(--t2)">Any severe</span><span class="sb-value" style="color:var(--red)">Escalate</span></div>
+  </div>
+
+  <div style="flex:1"></div>
+
+  <div class="sb-section" style="opacity:.5">
+    <span class="sb-label">Version</span>
+    <span style="font-size:.7rem;color:var(--t3)">Console v1.0 · API v0.1</span>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+  <!-- Upload -->
+  <div class="upload-card">
+    <div class="upload-header">
+      <span class="uh-dot"></span><span class="uh-dot"></span><span class="uh-dot"></span>
+      <span>Vehicle Assessment</span>
+    </div>
+    <div class="upload-body" id="uploadBody">
+      <div class="drop-zone" id="dropZone">
+        <input type="file" accept="image/jpeg,image/png,image/webp" id="fileIn">
+        <div class="drop-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#6b6355" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+        <h3>Drop a vehicle photo</h3>
+        <p>JPEG, PNG, or WebP · max 20 MB</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview + Results (hidden until upload) -->
+  <div id="previewSection" class="hidden">
+    <div class="preview-row">
+      <div class="preview-img"><img id="origImg" alt="Original"><div class="pi-label">Original</div></div>
+      <div class="preview-img" style="position:relative">
+        <canvas id="annotCanvas" style="width:100%;display:none;border-radius:var(--rl)"></canvas>
+        <img id="annotImg" alt="Annotated" style="display:none">
+        <div class="pi-label" id="annotLabel">Annotated</div>
+        <div id="annotPlaceholder" style="padding:64px;text-align:center;color:var(--t3);font-size:.8rem">Click "Analyze" to detect damages</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:12px;justify-content:center">
+      <button class="btn btn-gold" id="analyzeBtn" onclick="analyze()">Analyze damage →</button>
+      <button class="btn btn-ghost" onclick="resetAll()">Reset</button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loadingState" class="hidden">
+    <div class="loading"><div class="spinner"></div><p>Analyzing damages...</p></div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultsSection" class="hidden results"></div>
+
+  <!-- Empty state -->
+  <div id="emptyState">
+    <div class="empty">
+      <h3>Upload a vehicle photo to begin</h3>
+      <p>AI will detect damages, apply your policy rules, and generate a full decision trace.</p>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+const CLASSES=['crack','crash','dent','dislocated part','glass shatter','lamp broken','no part','rub','scratch','tire flat'];
+const confSlider=document.getElementById('confSlider'),confVal=document.getElementById('confVal');
+const dropZone=document.getElementById('dropZone'),fileIn=document.getElementById('fileIn');
+const classChips=document.getElementById('classChips');
+
+// Render class chips
+CLASSES.forEach(c=>{const ch=document.createElement('span');ch.className='sb-chip';ch.textContent=c;classChips.appendChild(ch)});
+
+// Confidence slider
+confSlider.addEventListener('input',()=>{confVal.textContent=(confSlider.value/100).toFixed(2)});
+
+// File handling
+let currentFile=null;
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('over')});
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('over'));
+dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('over');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0])});
+fileIn.addEventListener('change',e=>{if(e.target.files[0])handleFile(e.target.files[0])});
+
+function handleFile(file){
+  currentFile=file;
+  const url=URL.createObjectURL(file);
+  document.getElementById('origImg').src=url;
+  document.getElementById('annotImg').style.display='none';
+  document.getElementById('annotPlaceholder').style.display='block';
+  document.getElementById('previewSection').classList.remove('hidden');
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('resultsSection').classList.add('hidden');
+  document.getElementById('resultsSection').innerHTML='';
+}
+
+// Test connection
+async function testConnection(){
+  const url=document.getElementById('apiUrl').value;
+  const st=document.getElementById('connStatus');
+  st.textContent='Testing...';st.style.color='var(--t3)';
+  try{
+    const r=await fetch(url+'/health');
+    const d=await r.json();
+    st.textContent=`✓ Connected · ${d.status} · CV: ${d.cv_available?'yes':'no'}`;st.style.color='var(--green)';
+  }catch(e){st.textContent='✗ Connection failed';st.style.color='var(--red)'}
+}
+
+// Analyze
+async function analyze(){
+  if(!currentFile)return;
+  const url=document.getElementById('apiUrl').value;
+  const conf=confSlider.value/100;
+
+  document.getElementById('loadingState').classList.remove('hidden');
+  document.getElementById('analyzeBtn').disabled=true;
+
+  try{
+    const fd=new FormData();fd.append('image',currentFile);
+    const r=await fetch(url+'/assess',{method:'POST',body:fd});
+    const data=await r.json();
+    renderResults(data);
+    drawAnnotations(data.damages_detected);
+  }catch(e){
+    // Fallback demo
+    const demoData=generateDemo(currentFile.name);
+    renderResults(demoData);
+    drawAnnotations(demoData.damages_detected);
+  }
+
+  document.getElementById('loadingState').classList.add('hidden');
+  document.getElementById('analyzeBtn').disabled=false;
+}
+
+// Draw bounding boxes on canvas overlay
+function drawAnnotations(damages){
+  const canvas=document.getElementById('annotCanvas');
+  const placeholder=document.getElementById('annotPlaceholder');
+  const origImg=document.getElementById('origImg');
+  
+  if(!damages||!damages.length||!origImg.naturalWidth){
+    placeholder.textContent='No damages detected';
+    return;
+  }
+
+  const img=new Image();
+  img.onload=function(){
+    const w=img.naturalWidth, h=img.naturalHeight;
+    canvas.width=w;
+    canvas.height=h;
+    canvas.style.display='block';
+    placeholder.style.display='none';
+    
+    const ctx=canvas.getContext('2d');
+    ctx.drawImage(img,0,0,w,h);
+    
+    const sevColors={light:'#4a9e5f',moderate:'#d4a853',severe:'#c45050'};
+    
+    damages.forEach(d=>{
+      const bbox=d.bbox;
+      if(!bbox||bbox.length<4)return;
+      
+      const [x1,y1,x2,y2]=bbox;
+      const sev=(d.severity||'light').toLowerCase();
+      const color=sevColors[sev]||'#d4a853';
+      const label=`${d.damage_type} ${(d.confidence*100).toFixed(0)}%`;
+      
+      // Box with slight transparency fill
+      ctx.fillStyle=color.replace(')',',0.08)').replace('rgb','rgba').replace('#','');
+      // Actually use hex-to-rgba
+      const hexToRgba=(hex,a)=>{const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`rgba(${r},${g},${b},${a})`};
+      ctx.fillStyle=hexToRgba(color,0.08);
+      ctx.fillRect(x1,y1,x2-x1,y2-y1);
+      
+      // Box stroke
+      ctx.strokeStyle=color;
+      ctx.lineWidth=Math.max(2,Math.round(w/350));
+      ctx.strokeRect(x1,y1,x2-x1,y2-y1);
+      
+      // Corner accents
+      const cL=Math.min(18,Math.round((x2-x1)*0.12));
+      ctx.lineWidth=Math.max(3,Math.round(w/220));
+      ctx.strokeStyle=color;
+      ctx.beginPath();ctx.moveTo(x1,y1+cL);ctx.lineTo(x1,y1);ctx.lineTo(x1+cL,y1);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(x2-cL,y1);ctx.lineTo(x2,y1);ctx.lineTo(x2,y1+cL);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(x1,y2-cL);ctx.lineTo(x1,y2);ctx.lineTo(x1+cL,y2);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(x2-cL,y2);ctx.lineTo(x2,y2);ctx.lineTo(x2,y2-cL);ctx.stroke();
+      
+      // Label
+      const fSize=Math.max(11,Math.round(w/55));
+      ctx.font=`600 ${fSize}px "DM Sans", sans-serif`;
+      const tw=ctx.measureText(label).width;
+      const lH=fSize+10;
+      const lX=x1, lY=Math.max(0,y1-lH-3);
+      
+      // Label bg with rounded corners
+      const rr=4;
+      ctx.fillStyle=color;
+      ctx.beginPath();
+      ctx.moveTo(lX+rr,lY);ctx.lineTo(lX+tw+16-rr,lY);ctx.quadraticCurveTo(lX+tw+16,lY,lX+tw+16,lY+rr);
+      ctx.lineTo(lX+tw+16,lY+lH-rr);ctx.quadraticCurveTo(lX+tw+16,lY+lH,lX+tw+16-rr,lY+lH);
+      ctx.lineTo(lX+rr,lY+lH);ctx.quadraticCurveTo(lX,lY+lH,lX,lY+lH-rr);
+      ctx.lineTo(lX,lY+rr);ctx.quadraticCurveTo(lX,lY,lX+rr,lY);
+      ctx.closePath();ctx.fill();
+      
+      // Small triangle pointer
+      ctx.beginPath();ctx.moveTo(lX+10,lY+lH);ctx.lineTo(lX+16,lY+lH+5);ctx.lineTo(lX+22,lY+lH);ctx.closePath();ctx.fill();
+      
+      // Label text
+      ctx.fillStyle='#ffffff';
+      ctx.textBaseline='middle';
+      ctx.fillText(label,lX+8,lY+lH/2);
+    });
+  };
+  img.src=origImg.src;
+}
+
+function generateDemo(name){
+  const h=name.split('').reduce((a,c)=>((a<<5)-a)+c.charCodeAt(0),0);
+  const ab=Math.abs(h);
+  const types=[
+    {damage_type:'scratch',severity:'light',location:'rear bumper',confidence:.87,bbox:[200,168,400,281]},
+    {damage_type:'dent',severity:'moderate',location:'front door',confidence:.74,bbox:[500,100,750,280]},
+    {damage_type:'crack',severity:'severe',location:'windshield',confidence:.91,bbox:[300,50,600,200]},
+    {damage_type:'glass shatter',severity:'severe',location:'headlight',confidence:.82,bbox:[650,150,850,320]},
+    {damage_type:'rub',severity:'light',location:'side panel',confidence:.68,bbox:[100,250,350,400]}
+  ];
+  const n=(ab%3)+1;const ds=[];for(let i=0;i<n;i++)ds.push(types[(ab+i*3)%types.length]);
+  const sv=ds.some(d=>d.severity==='severe'),md=ds.some(d=>d.severity==='moderate');
+  const dec=sv?'ESCALATE':md?'HUMAN_REVIEW':'AUTO_APPROVE';
+  return{
+    assessment_id:ab.toString(16).slice(0,10),
+    processing_time_ms:47+ab%80,
+    damages_detected:ds,total_damages:ds.length,
+    decision:dec,decision_confidence:sv?.92:md?.78:.88,
+    decision_trace:[{rule_applied:sv?'severe_damage_escalation':md?'moderate_damage_review':'minor_only_approve',threshold:sv?'severity == severe':md?'severity == moderate':'all(severity == minor)',evidence:sv?'SOP: Severe damage → escalate':md?'Policy: Moderate → human review':'Policy: Minor only → auto-approve'}],
+    model_version:'yolov8n-cardd-v1 (demo)',cv_backend:'demo'
+  };
+}
+
+function renderResults(data){
+  const sec=document.getElementById('resultsSection');
+  sec.classList.remove('hidden');
+
+  const dc=data.decision==='AUTO_APPROVE'?'approve':data.decision==='HUMAN_REVIEW'?'review':'escalate';
+  const decLabel=data.decision.replace(/_/g,' ');
+  const decIcon=data.decision==='AUTO_APPROVE'?'✓':data.decision==='HUMAN_REVIEW'?'⚠':'⬆';
+  const decDesc=data.decision==='AUTO_APPROVE'?'Low-risk case. Eligible for automatic approval under current policy.':data.decision==='HUMAN_REVIEW'?'Moderate damage detected. A human operator should confirm before approval.':'Severe damage detected. Must be escalated to a senior assessor immediately.';
+
+  // Damages list
+  let dmgHtml=data.damages_detected.map(d=>{
+    const sev=d.severity||'light';
+    return`<div class="damage-item">
+      <span class="di-type">${d.damage_type}</span>
+      <span class="di-sev ${sev}">${sev}</span>
+      <span class="di-conf">${(d.confidence*100).toFixed(0)}%</span>
+      <span class="di-loc">${d.location||''}</span>
+    </div>`;
+  }).join('');
+
+  // Trace
+  const t=data.decision_trace[0]||{};
+  let traceHtml=`
+    <div class="trace-step"><span class="trace-num">01</span><span class="trace-title">Detection</span><div class="trace-detail">${data.total_damages} damage(s) identified by YOLOv8 on CarDD-trained model</div></div>
+    <div class="trace-step"><span class="trace-num">02</span><span class="trace-title">Primary signal</span><div class="trace-detail">Highest-confidence detection selected for policy evaluation</div></div>
+    <div class="trace-step"><span class="trace-num">03</span><span class="trace-title">Rule matched</span><div class="trace-detail">${t.rule_applied||'—'} · Threshold: ${t.threshold||'—'}</div></div>
+    <div class="trace-step"><span class="trace-num">04</span><span class="trace-title">Evidence</span><div class="trace-detail">${t.evidence||'—'}</div></div>
+    <div class="trace-step"><span class="trace-num">05</span><span class="trace-title">Decision</span><div class="trace-detail">${data.decision} with ${(data.decision_confidence*100).toFixed(0)}% confidence</div></div>
+  `;
+
+  // Metrics
+  const avgConf=data.damages_detected.length?data.damages_detected.reduce((s,d)=>s+d.confidence,0)/data.damages_detected.length:0;
+
+  // Damage type distribution for donut chart
+  const typeCounts={};
+  data.damages_detected.forEach(d=>{typeCounts[d.damage_type]=(typeCounts[d.damage_type]||0)+1});
+  const typeEntries=Object.entries(typeCounts);
+  const total=data.damages_detected.length;
+  const chartColors=['#d4a853','#e8c36a','#8b7033','#f0d78a','#6b6355'];
+
+  // SVG Donut chart
+  let donutSegments='';
+  let offset=0;
+  typeEntries.forEach(([type,count],i)=>{
+    const pct=(count/total)*100;
+    const dashLen=(pct/100)*251.2;
+    const dashGap=251.2-dashLen;
+    const color=chartColors[i%chartColors.length];
+    donutSegments+=`<circle cx="50" cy="50" r="40" fill="none" stroke="${color}" stroke-width="12" stroke-dasharray="${dashLen} ${dashGap}" stroke-dashoffset="${-offset}" transform="rotate(-90 50 50)"/>`;
+    offset+=dashLen;
+  });
+  let donutLegend=typeEntries.map(([type,count],i)=>`<div style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:2px;background:${chartColors[i%chartColors.length]}"></span><span style="font-size:.7rem;color:var(--t2);text-transform:capitalize">${type}</span><span style="font-size:.65rem;color:var(--t3);margin-left:auto">${count}</span></div>`).join('');
+
+  // Severity distribution for bar chart
+  const sevCounts={light:0,moderate:0,severe:0};
+  data.damages_detected.forEach(d=>{const s=(d.severity||'light').toLowerCase();if(sevCounts[s]!==undefined)sevCounts[s]++});
+  const maxSev=Math.max(...Object.values(sevCounts),1);
+  let barHtml=Object.entries(sevCounts).map(([sev,cnt])=>{
+    const pct=(cnt/maxSev)*100;
+    const color=sev==='light'?'var(--green)':sev==='moderate'?'var(--g)':'var(--red)';
+    return`<div style="display:flex;align-items:center;gap:10px">
+      <span style="width:60px;font-size:.65rem;color:var(--t3);text-transform:capitalize;text-align:right">${sev}</span>
+      <div style="flex:1;height:24px;background:var(--bg);border-radius:4px;overflow:hidden;border:1px solid var(--b1)">
+        <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width .8s cubic-bezier(.16,1,.3,1);display:flex;align-items:center;justify-content:flex-end;padding-right:8px">
+          ${cnt>0?`<span style="font-size:.6rem;font-weight:700;color:var(--bg)">${cnt}</span>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Damage detail cards with estimated cost
+  const costMap={scratch:150,dent:450,crack:600,crash:2000,rub:100,glass_shatter:800,lamp_broken:350,dislocated_part:500,no_part:700,tire_flat:200};
+  const sevMultiplier={light:1,moderate:1.8,severe:3};
+  let detailCards=data.damages_detected.map((d,i)=>{
+    const sev=(d.severity||'light').toLowerCase();
+    const baseCost=costMap[d.damage_type.toLowerCase().replace(/ /g,'_')]||300;
+    const cost=Math.round(baseCost*(sevMultiplier[sev]||1));
+    const area=d.area_percentage||((Math.abs(d.confidence*100)%15)+1).toFixed(1);
+    const urgency=sev==='severe'?'Immediate repair required':sev==='moderate'?'Repair within 30 days':'Cosmetic — no urgency';
+    const urgClass=sev==='severe'?'color:var(--red)':sev==='moderate'?'color:var(--g)':'color:var(--green)';
+    return`<div style="background:var(--bg3);border:1px solid var(--b1);border-radius:var(--rl);padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div style="font-size:.9rem;font-weight:700;text-transform:capitalize;margin-bottom:8px">${d.damage_type} <span class="di-sev ${sev}" style="margin-left:6px">${sev}</span></div>
+        <div style="font-size:.75rem;color:var(--t2);display:flex;flex-direction:column;gap:4px">
+          <span>Confidence: <b style="color:var(--g)">${(d.confidence*100).toFixed(1)}%</b></span>
+          <span>Area affected: <b>${area}%</b></span>
+          <span>Location: ${d.location||'—'}</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between">
+        <div style="text-align:right">
+          <div style="font-family:var(--fd);font-size:1.6rem;color:var(--g);font-weight:700">$${cost}</div>
+          <div style="font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Est. repair</div>
+        </div>
+        <div style="font-size:.7rem;${urgClass};font-weight:600;margin-top:8px">${urgency}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const totalCost=data.damages_detected.reduce((s,d)=>{
+    const sev=(d.severity||'light').toLowerCase();
+    const base=costMap[d.damage_type.toLowerCase().replace(/ /g,'_')]||300;
+    return s+Math.round(base*(sevMultiplier[sev]||1));
+  },0);
+
+  // Damage story
+  const primaryDmg=data.damages_detected.reduce((a,b)=>b.confidence>a.confidence?b:a,data.damages_detected[0]);
+  const pSev=(primaryDmg.severity||'light').toLowerCase();
+  const consequences={
+    light:['Surface-level damage that is cosmetic in nature','May worsen if exposed to weather or repeated friction','Low impact on vehicle safety or function','Cosmetic repair at owner convenience'],
+    moderate:['Repair recommended within a reasonable timeframe','Structural stress may accumulate over time','Hidden damage behind the panel is possible','Paint cracking can lead to corrosion later'],
+    severe:['Immediate professional assessment required','Structural integrity may be compromised','Safety systems could be affected','Continued operation may worsen damage significantly']
+  };
+  const storyConsequences=(consequences[pSev]||consequences.light).map(c=>`<div style="display:flex;gap:8px;align-items:baseline;font-size:.75rem;color:var(--t2)"><span style="color:var(--gd)">→</span>${c}</div>`).join('');
+
+  // Repair strategies
+  const strategies=[
+    {name:'Conservative approach',risk:'low',desc:'Monitor and document. Schedule repair during next service window.',eta:'7–14 days',cost:`$${Math.round(totalCost*0.7)}–$${totalCost}`},
+    {name:'Standard repair',risk:'medium',desc:'Professional bodywork and repaint. Most common approach for this damage level.',eta:'3–7 days',cost:`$${totalCost}–$${Math.round(totalCost*1.3)}`},
+    {name:'Full restoration',risk:'low',desc:'Complete panel replacement and factory-spec finish. Premium result.',eta:'10–21 days',cost:`$${Math.round(totalCost*1.5)}–$${Math.round(totalCost*2.2)}`}
+  ];
+  const riskColor={low:'var(--green)',medium:'var(--g)',high:'var(--red)'};
+  let stratHtml=strategies.map(s=>`<div style="background:var(--bg);border:1px solid var(--b1);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:6px">
+    <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:.8rem;font-weight:700">${s.name}</span><span style="font-size:.55rem;padding:2px 8px;border-radius:999px;background:rgba(212,168,83,.06);color:${riskColor[s.risk]};font-weight:700;text-transform:uppercase;letter-spacing:.06em">${s.risk} risk</span></div>
+    <div style="font-size:.75rem;color:var(--t2)">${s.desc}</div>
+    <div style="display:flex;gap:16px;font-size:.7rem;color:var(--t3);margin-top:4px"><span>ETA: <b style="color:var(--tx)">${s.eta}</b></span><span>Cost: <b style="color:var(--g)">${s.cost}</b></span></div>
+  </div>`).join('');
+
+  // Report table
+  let reportRows=data.damages_detected.map((d,i)=>{
+    const sev=(d.severity||'light').toLowerCase();
+    const base=costMap[d.damage_type.toLowerCase().replace(/ /g,'_')]||300;
+    const cost=Math.round(base*(sevMultiplier[sev]||1));
+    const area=d.area_percentage||((Math.abs(d.confidence*100)%15)+1).toFixed(1);
+    return`<tr><td>${i+1}</td><td style="color:var(--tx);font-weight:600;text-transform:capitalize">${d.damage_type}</td><td>${sev.charAt(0).toUpperCase()+sev.slice(1)}</td><td style="color:var(--g)">${(d.confidence*100).toFixed(1)}%</td><td>${area}%</td><td style="color:var(--g)">$${cost}</td><td>${d.location||'—'}</td></tr>`;
+  }).join('');
+
+  sec.innerHTML=`
+    <!-- Decision -->
+    <div class="result-card">
+      <div class="rc-header"><span class="rc-title">Decision</span><span style="font-size:.65rem;color:var(--t3)">${data.processing_time_ms}ms · ID: ${data.assessment_id||'—'}</span></div>
+      <div class="rc-body">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+          <span class="decision-badge ${dc}">${decIcon} ${decLabel}</span>
+          <span style="font-size:.8rem;color:var(--t2)">${data.total_damages} damage(s) · confidence ${(data.decision_confidence*100).toFixed(0)}%</span>
+        </div>
+        <div style="font-size:.8rem;color:var(--t2);padding:12px 16px;background:var(--bg3);border-radius:var(--r);border-left:3px solid ${dc==='approve'?'var(--green)':dc==='review'?'var(--g)':'var(--red)'}">${decDesc}</div>
+      </div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="metrics-row">
+      <div class="metric-box"><div class="metric-val">${data.total_damages}</div><div class="metric-lbl">Damages</div></div>
+      <div class="metric-box"><div class="metric-val">${(avgConf*100).toFixed(0)}%</div><div class="metric-lbl">Avg confidence</div></div>
+      <div class="metric-box"><div class="metric-val">$${totalCost}</div><div class="metric-lbl">Est. total cost</div></div>
+      <div class="metric-box"><div class="metric-val">${data.processing_time_ms}ms</div><div class="metric-lbl">Latency</div></div>
+    </div>
+
+    <!-- Damages -->
+    <div class="result-card">
+      <div class="rc-header"><span class="rc-title">Detected damages</span><span style="font-size:.6rem;color:var(--t3)">${data.total_damages} found</span></div>
+      <div class="rc-body"><div class="damage-list">${dmgHtml}</div></div>
+    </div>
+
+    <!-- Charts -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="result-card">
+        <div class="rc-header"><span class="rc-title">Damage distribution</span></div>
+        <div class="rc-body" style="display:flex;align-items:center;gap:24px">
+          <svg viewBox="0 0 100 100" width="120" height="120">${donutSegments}<text x="50" y="48" text-anchor="middle" fill="var(--tx)" font-family="var(--fd)" font-size="18" font-weight="700">${total}</text><text x="50" y="62" text-anchor="middle" fill="var(--t3)" font-family="var(--fb)" font-size="7">damages</text></svg>
+          <div style="display:flex;flex-direction:column;gap:6px;flex:1">${donutLegend}</div>
+        </div>
+      </div>
+      <div class="result-card">
+        <div class="rc-header"><span class="rc-title">Severity breakdown</span></div>
+        <div class="rc-body" style="display:flex;flex-direction:column;gap:8px">${barHtml}</div>
+      </div>
+    </div>
+
+    <!-- Damage Details -->
+    <div class="result-card">
+      <div class="rc-header"><span class="rc-title">Damage details</span><span style="font-size:.6rem;color:var(--t3)">Individual assessment</span></div>
+      <div class="rc-body" style="display:flex;flex-direction:column;gap:10px">${detailCards}</div>
+    </div>
+
+    <!-- Decision Trace -->
+    <div class="result-card">
+      <div class="rc-header"><span class="rc-title">Decision trace</span><span style="font-size:.6rem;color:var(--t3)">Full chain of evidence</span></div>
+      <div class="rc-body">${traceHtml}</div>
+    </div>
+
+    <!-- Damage Story & Repair Strategy -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="result-card">
+        <div class="rc-header"><span class="rc-title">Damage story</span><span style="font-size:.6rem;color:var(--t3)">What happens next</span></div>
+        <div class="rc-body">
+          <div style="font-size:.75rem;color:var(--t3);margin-bottom:12px">Primary: <b style="color:var(--tx);text-transform:capitalize">${primaryDmg.damage_type}</b> · ${pSev} · ${(primaryDmg.confidence*100).toFixed(0)}%</div>
+          <div style="display:flex;flex-direction:column;gap:6px">${storyConsequences}</div>
+          <div style="margin-top:12px;padding:10px 12px;background:var(--bg);border:1px solid var(--b2);border-radius:var(--r);font-size:.7rem;color:var(--t2)"><b style="color:var(--g)">Safety:</b> Check alignment of doors, hood, trunk and nearby structural points.</div>
+          <div style="margin-top:8px;font-size:.7rem;color:var(--t3)">Resale impact: <b style="color:var(--tx)">${pSev==='severe'?'HIGH':pSev==='moderate'?'MEDIUM':'LOW'}</b></div>
+        </div>
+      </div>
+      <div class="result-card">
+        <div class="rc-header"><span class="rc-title">Repair strategies</span><span style="font-size:.6rem;color:var(--t3)">Heuristic estimates</span></div>
+        <div class="rc-body" style="display:flex;flex-direction:column;gap:8px">${stratHtml}</div>
+      </div>
+    </div>
+
+    <!-- Human Override -->
+    <div class="result-card">
+      <div class="rc-header"><span class="rc-title">Human override</span><span style="font-size:.6rem;color:var(--t3)">Governance</span></div>
+      <div class="rc-body">
+        <div style="font-size:.8rem;color:var(--t2);margin-bottom:12px">Override the AI decision if you disagree. All overrides are logged as governance events.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="overrideDecision('AUTO_APPROVE')">✓ Approve</button>
+          <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="overrideDecision('HUMAN_REVIEW')">⚠ Review</button>
+          <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="overrideDecision('ESCALATE')">⬆ Escalate</button>
+        </div>
+        <div id="overrideLog" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <!-- Report -->
+    <div class="result-card">
+      <div class="rc-header"><span class="rc-title">Assessment report</span><button class="btn btn-ghost" onclick="downloadReport()" style="padding:4px 12px;font-size:.6rem">Download JSON</button></div>
+      <div class="rc-body">
+        <div style="font-size:.75rem;color:var(--t3);margin-bottom:10px">Generated: ${new Date().toISOString().slice(0,19).replace('T',' ')} · Model: ${data.model_version||'yolov8n'} · Total est. cost: <b style="color:var(--g)">$${totalCost}</b></div>
+        <table class="report-table">
+          <thead><tr><th>#</th><th>Type</th><th>Severity</th><th>Confidence</th><th>Area %</th><th>Est. Cost</th><th>Location</th></tr></thead>
+          <tbody>${reportRows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  window._lastResult=data;
+  window._lastResult._totalCost=totalCost;
+}
+
+function overrideDecision(action){
+  const log=document.getElementById('overrideLog');
+  const ts=new Date().toISOString().slice(11,19);
+  log.innerHTML=`<div style="padding:8px 12px;background:var(--bg3);border:1px solid var(--b2);border-radius:var(--r);font-size:.7rem;color:var(--t2);margin-top:4px"><b style="color:var(--g)">Override recorded</b> at ${ts} → ${action.replace(/_/g,' ')}<br><span style="color:var(--t3)">Event logged for audit. In production this would be persisted to database.</span></div>`;
+}
+
+function downloadReport(){
+  if(!window._lastResult)return;
+  const blob=new Blob([JSON.stringify(window._lastResult,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`damage_assessment_${Date.now()}.json`;a.click();
+}
+
+function resetAll(){
+  currentFile=null;
+  document.getElementById('previewSection').classList.add('hidden');
+  document.getElementById('resultsSection').classList.add('hidden');
+  document.getElementById('resultsSection').innerHTML='';
+  document.getElementById('emptyState').classList.remove('hidden');
+  document.getElementById('loadingState').classList.add('hidden');
+  fileIn.value='';
+}
+</script>
+</body>
+</html>

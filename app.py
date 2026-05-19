@@ -68,8 +68,10 @@ st.markdown(
   --shadow2: 0 16px 50px rgba(0,0,0,0.50);
   --radius: 22px;
   --radius2: 16px;
-  --focus: rgba(255,255,255,0.20);
+  --focus: rgba(212,168,83,0.25);
   --white: rgba(255,255,255,0.92);
+  --gold: rgba(212,168,83,0.90);
+  --gold-dim: rgba(212,168,83,0.40);
 }
 
 html, body, [class*="css"] {
@@ -146,7 +148,7 @@ div[data-testid="stAlert"] *{
   letter-spacing: -0.06em;
   line-height: 1.05;
   margin: 0;
-  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.68));
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(212,168,83,0.70));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -224,7 +226,7 @@ div[data-testid="stExpander"] details summary{
 .stButton button{
   border-radius: 14px !important;
   border: 1px solid rgba(255,255,255,0.14) !important;
-  background: linear-gradient(180deg, rgba(255,255,255,0.11), rgba(255,255,255,0.035)) !important;
+  background: linear-gradient(180deg, rgba(212,168,83,0.15), rgba(212,168,83,0.04)) !important;
   color: rgba(255,255,255,0.92) !important;
   font-weight: 850 !important;
   letter-spacing: -0.02em;
@@ -281,15 +283,15 @@ hr{
 
 /* Better focus */
 *:focus-visible{
-  outline: 2px solid rgba(255,255,255,0.18) !important;
+  outline: 2px solid rgba(212,168,83,0.30) !important;
   outline-offset: 2px;
   border-radius: 10px;
 }
 
 /* Multiselect tags (remove red/pink) */
 div[data-baseweb="tag"]{
-  background-color: rgba(255,255,255,0.06) !important;
-  border: 1px solid rgba(255,255,255,0.12) !important;
+  background-color: rgba(212,168,83,0.10) !important;
+  border: 1px solid rgba(212,168,83,0.25) !important;
 }
 div[data-baseweb="tag"] span{
   color: rgba(255,255,255,0.86) !important;
@@ -301,19 +303,19 @@ div[data-baseweb="tag"] svg{
 
 /* Slider accent (remove red) */
 div[data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"]{
-  background-color: rgba(255,255,255,0.92) !important;
-  box-shadow: 0 0 0 6px rgba(255,255,255,0.06);
+  background-color: rgba(212,168,83,0.95) !important;
+  box-shadow: 0 0 0 6px rgba(212,168,83,0.12);
 }
 div[data-testid="stSlider"] [data-baseweb="slider"] div[aria-valuemin]{
   background: rgba(255,255,255,0.20) !important;
 }
 div[data-testid="stSlider"] [data-baseweb="slider"] div[aria-valuenow]{
-  background: rgba(255,255,255,0.55) !important;
+  background: rgba(212,168,83,0.65) !important;
 }
 
 /* Checkbox accents */
 div[data-testid="stCheckbox"] svg{
-  color: rgba(255,255,255,0.90) !important;
+  color: rgba(212,168,83,0.90) !important;
 }
 
 /* Headers inside main content */
@@ -568,8 +570,8 @@ def generate_assessment_report(detections, image_info):
     total_area = sum([d["area_percentage"] for d in detections])
     avg_confidence = np.mean([d["confidence"] for d in detections])
 
-    severity_priority = {"Severe": 3, "Moderate": 2, "Light": 1}
-    highest_severity = max([severity_priority.get(d["severity"], 0) for d in detections]) if detections else 0
+    severity_priority = {"Severe": 3, "severe": 3, "Moderate": 2, "moderate": 2, "Light": 1, "light": 1}
+    highest_severity = max([severity_priority.get(d["severity"], 0) for d in detections]) if detections else 0 if detections else 0
     severity_names = {3: "Severe", 2: "Moderate", 1: "Light"}
 
     report = {
@@ -675,16 +677,15 @@ def render_hero():
         st.markdown(
             """
 <div class="hero-wrap">
-  <h1 class="hero-title">Car Damage Assessment AI</h1>
+  <h1 class="hero-title">Damage.ai</h1>
   <div class="hero-subtitle">
-    High-trust vehicle damage intelligence. Computer vision detection and agentic decisioning,
-    presented in a premium monochrome interface.
+    AI-powered vehicle damage assessment. Detect, classify, and document every scratch, dent, and crack — with full decision trace and human control.
   </div>
   <div class="tag-row">
-    <span class="tag">Real-time inference</span>
-    <span class="tag">Policy workflow</span>
-    <span class="tag">Analytics and reporting</span>
-    <span class="tag">Decision assist</span>
+    <span class="tag">YOLOv8 · 10 classes</span>
+    <span class="tag">Policy-driven decisions</span>
+    <span class="tag">Full audit trail</span>
+    <span class="tag">Human-in-the-loop</span>
   </div>
 </div>
 """,
@@ -696,7 +697,7 @@ def render_hero():
         st_html(hero_svg_car_damage(), height=255)
         st.markdown(
             "<div style='margin-top:10px; color:rgba(255,255,255,0.62); font-size:0.92rem;'>"
-            "Tip: sharp, well-lit images improve confidence scores."
+            "Upload a vehicle photo → AI detects damage → policy engine decides."
             "</div>",
             unsafe_allow_html=True,
         )
@@ -779,8 +780,8 @@ def main():
 
         damage_types = st.multiselect(
             "Damage Types to Detect",
-            ["Scratches", "Dents", "Broken Parts", "Paint Damage"],
-            default=["Scratches", "Dents", "Paint Damage"],
+            ["scratch", "dent", "crack", "crash", "rub", "glass_shatter", "lamp_broken", "dislocated_part", "no_part", "tire_flat"],
+            default=["scratch", "dent", "crack", "rub", "glass_shatter"],
             help="Select which types of damage to analyze",
         )
 
@@ -793,10 +794,11 @@ def main():
         st.markdown(
             """
         #### System Information
-        **Model**: YOLOv8 Custom Trained  
-        **Accuracy**: 58.1% mAP@0.5  
+        **Model**: YOLOv8n (CarDD)  
+        **mAP@50**: 58.1%  
+        **Precision**: 67.5%  
         **Classes**: 10 damage types  
-        **Processing**: Real-time inference  
+        **Inference**: CPU real-time  
         """
         )
 
@@ -831,9 +833,6 @@ def main():
 
             if st.button("Analyze Damage", type="primary", use_container_width=True):
                 with st.spinner("Processing image and detecting damage..."):
-                    import time
-
-                    time.sleep(2)
 
                     # Use real YOLOv8 model if available, otherwise fallback to demo
                     if CarDamageDetector is not None:
@@ -860,6 +859,13 @@ def main():
                             processed_image, detections = demo_damage_detection(image)
                     else:
                         processed_image, detections = demo_damage_detection(image)
+
+                    # Normalize severity to Title case for display consistency
+                    for det in detections:
+                        if det.get("severity"):
+                            det["severity"] = det["severity"].capitalize()
+                        if det.get("type"):
+                            det["type"] = det["type"].replace("_", " ").title()
 
                     st.session_state.processed_image = processed_image
                     st.session_state.detections = detections
@@ -1038,58 +1044,7 @@ def main():
                             for step in s.steps:
                                 st.write(f"- {step}")
 
-                # ==========================
-                # Before / After Vision (Preview)
-                # ==========================
-                st.markdown("---")
-                st.markdown("## ✨ Before / After Vision (Preview)")
-
-                preview_intensity = st.slider("Preview intensity", 0.0, 1.0, 0.65, 0.05)
-
-                before_rgb = st.session_state.original_image  # ORIGINAL image RGB
-                preview = make_repaired_preview(before_rgb, primary, intensity=preview_intensity)
-
-                after_rgb = preview["after"]
-                diff = preview["diff"]
-                mask = preview["mask"]
-
-                cA, cB = st.columns(2)
-                with cA:
-                    st.image(before_rgb, caption="Before (original)", use_container_width=True)
-                with cB:
-                    st.image(after_rgb, caption="After (CV inpaint preview)", use_container_width=True)
-
-                # zoom to bbox
-                bbox = primary.get("bbox") if primary else None
-                if bbox:
-                    x1, y1, x2, y2 = bbox
-                    pad = 18
-                    h, w = before_rgb.shape[:2]
-                    x1 = max(0, x1 - pad)
-                    y1 = max(0, y1 - pad)
-                    x2 = min(w - 1, x2 + pad)
-                    y2 = min(h - 1, y2 + pad)
-
-                    z1, z2 = st.columns(2)
-                    with z1:
-                        st.image(before_rgb[y1:y2, x1:x2], caption="Zoom: Before", use_container_width=True)
-                    with z2:
-                        st.image(after_rgb[y1:y2, x1:x2], caption="Zoom: After", use_container_width=True)
-
-                st.markdown("#### Difference (what changed in preview)")
-                if diff is not None:
-                    st.image(diff, caption="Diff map (higher = more changed)", use_container_width=True)
-                else:
-                    st.info("Diff map is unavailable for this preview method.")
-
-                if mask is not None:
-                    with st.expander("Preview mask (where inpainting was applied)"):
-                        st.image(mask, caption="Mask", use_container_width=True)
-
-                st.caption(
-                    "Note: this is a UX simulation (CV inpainting), not real body repair. "
-                    "It helps visualize expected improvement."
-                )
+                # [Before/After Preview removed — will be replaced with improved version]
 
                 # Optional: keep your retriever KB insights
                 q = f"{signal.get('damage_type', '')} {signal.get('severity', '')} repair guidance checklist risks"
@@ -1157,9 +1112,9 @@ def main():
                         st.write(f"**Bounding Box:** ({bbox[0]}, {bbox[1]}) to ({bbox[2]}, {bbox[3]})")
                         st.write(f"**Estimated Cost:** ${detection.get('estimated_cost', 'N/A')}")
 
-                        if severity == "Severe":
+                        if severity.lower() == "severe":
                             st.error("Immediate repair recommended")
-                        elif severity == "Moderate":
+                        elif severity.lower() == "moderate":
                             st.warning("Repair recommended within 30 days")
                         else:
                             st.info("Cosmetic repair — no urgency")
@@ -1215,12 +1170,21 @@ def main():
         else:
             st.info("Upload an image and click Analyze Damage to see results here.")
 
-            st.markdown("### Sample Analysis")
-            st.write("The system can detect and analyze:")
-            st.write("- Scratches: surface-level paint damage")
-            st.write("- Dents: body deformation damage")
-            st.write("- Paint Damage: coating and color issues")
-            st.write("- Broken Parts: structural component damage")
+            st.markdown("### Detection Capabilities")
+            st.write("Trained on CarDD dataset — 4,000+ real damage images:")
+            cap_col1, cap_col2 = st.columns(2)
+            with cap_col1:
+                st.write("- **Scratch** — surface paint damage")
+                st.write("- **Dent** — body deformation")
+                st.write("- **Crack** — structural fractures")
+                st.write("- **Crash** — collision damage")
+                st.write("- **Rub** — friction marks")
+            with cap_col2:
+                st.write("- **Glass shatter** — broken windows")
+                st.write("- **Lamp broken** — light damage")
+                st.write("- **Dislocated part** — misalignment")
+                st.write("- **No part** — missing components")
+                st.write("- **Tire flat** — tire damage")
 
 
 if __name__ == "__main__":
