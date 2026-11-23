@@ -134,9 +134,29 @@ python api.py
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/assess` | Upload image → get damage assessment with decision trace |
-| `GET` | `/health` | System health check and module availability |
+| `POST` | `/compare` | Compare vehicle images and report newly detected damage |
+| `GET` | `/health` | System health check and module availability, including `/compare` readiness |
 | `GET` | `/policy` | Current policy configuration and decision rules |
 | `GET` | `/docs` | Interactive Swagger UI documentation |
+
+### Compare images by angle
+
+`POST /compare` accepts multipart fields `angle`, `initial_image`, `final_image`, and an optional `previous_image`. `angle` must be `Frente`, `Lateral Esquerda`, `Traseira`, or `Lateral Direita`. Images must be JPEG, PNG, or WebP, no larger than 20 MB or 16 megapixels. Accepted images are downscaled to a maximum dimension of 2048 pixels before inference, and comparison requests are processed one at a time to limit peak memory.
+
+With `previous_image`, the endpoint compares `previous_image → initial_image` for `between_trips` damage and `initial_image → final_image` for `this_trip` damage. Without it, only the latter comparison is made. A detection is considered equivalent only when its class matches (case-insensitively) and its normalized bounding box has IoU ≥ 0.30; matching is one-to-one, greedy by highest IoU, with stable index tie-breaking. Detection confidence is the YOLO confidence score, **not** a calibrated probability that the damage is new. Bounding boxes are normalized to `[ymin, xmin, ymax, xmax]` in the app's YX coordinate order.
+
+Unlike `/assess`, `/compare` never falls back to demo detections: if CV dependencies or `models/best.pt` are unavailable, it returns an explicit 503; inference failures return 500.
+
+For local use, `/compare` does not require authentication unless `DAMAGE_AI_API_TOKEN` is set. When deploying the API, configure that environment variable with a strong secret and send `Authorization: Bearer <token>` on each `/compare` request. The token is not returned by `/health` or written to application logs.
+
+```bash
+curl -X POST http://localhost:8000/compare \
+  -H "Authorization: Bearer $DAMAGE_AI_API_TOKEN" \
+  -F "angle=Frente" \
+  -F "initial_image=@previous_inspection.jpg" \
+  -F "final_image=@current_inspection.jpg" \
+  -F "previous_image=@last_trip.jpg"
+```
 
 ### Example: assess vehicle damage via curl
 
