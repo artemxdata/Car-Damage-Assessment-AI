@@ -313,7 +313,38 @@ def comparison_uploads(include_previous: bool = True):
 class TestComparison:
     @pytest.fixture(autouse=True)
     def clear_comparison_token(self, monkeypatch):
+        import api
+
         monkeypatch.delenv("DAMAGE_AI_API_TOKEN", raising=False)
+        monkeypatch.setattr(api, "_comparison_detector", None)
+
+    def test_compare_reuses_detector_across_requests(self, monkeypatch):
+        import api
+
+        detector_loads = 0
+
+        class NoDamageDetector:
+            def detect_damage(self, image):
+                return {"damages": []}
+
+        def create_detector(**kwargs):
+            nonlocal detector_loads
+            detector_loads += 1
+            return NoDamageDetector()
+
+        monkeypatch.setattr(api, "CV_AVAILABLE", True)
+        monkeypatch.setattr(api, "CarDamageDetector", create_detector, raising=False)
+
+        for _ in range(2):
+            response = client.post(
+                "/compare",
+                data={"angle": "Frente"},
+                files=comparison_uploads(include_previous=False),
+            )
+            assert response.status_code == 200
+            assert response.json() == {"angle": "Frente", "damages": []}
+
+        assert detector_loads == 1
 
     def test_compare_reports_only_unmatched_detections_with_yx_boxes(self, monkeypatch):
         import api

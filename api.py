@@ -22,6 +22,7 @@ import sys
 import uuid
 import time
 import logging
+from threading import Lock
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional
@@ -63,6 +64,22 @@ try:
 except ImportError:
     AGENT_AVAILABLE = False
     logger.warning("Decision agent not found — using demo decisioning")
+
+_comparison_detector_lock = Lock()
+_comparison_detector = None
+
+
+def _get_comparison_detector():
+    """Load the YOLO detector once per process, even under concurrent requests."""
+    global _comparison_detector
+    if _comparison_detector is None:
+        with _comparison_detector_lock:
+            if _comparison_detector is None:
+                _comparison_detector = CarDamageDetector(
+                    model_path=str(YOLO_MODEL_PATH),
+                    confidence_threshold=0.25,
+                )
+    return _comparison_detector
 
 # ---------------------------------------------------------------------------
 # Response models (Pydantic)
@@ -601,10 +618,7 @@ async def compare_damage(
         raise HTTPException(status_code=503, detail="YOLO comparison is unavailable because the trained model is missing.")
 
     try:
-        detector = CarDamageDetector(
-            model_path=str(YOLO_MODEL_PATH),
-            confidence_threshold=0.25,
-        )
+        detector = _get_comparison_detector()
     except Exception as exc:
         logger.exception("Could not load the trained YOLO model for /compare")
         raise HTTPException(status_code=503, detail="The trained YOLO model could not be loaded.") from exc
