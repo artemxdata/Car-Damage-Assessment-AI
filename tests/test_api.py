@@ -14,6 +14,7 @@ These tests verify:
 import io
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 # Import the FastAPI app
 import sys
@@ -83,6 +84,7 @@ class TestHealth:
         assert "version" in data
         assert "cv_available" in data
         assert "agent_available" in data
+        assert isinstance(data["compare_available"], bool)
         assert "uptime_seconds" in data
     
     def test_health_status_is_healthy(self):
@@ -284,6 +286,196 @@ class TestValidation:
         """Should return 422 when no image is provided."""
         response = client.post("/assess")
         assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Tests: paired comparison endpoint
+# ---------------------------------------------------------------------------
+
+def make_comparison_image() -> bytes:
+    image = Image.new("RGB", (20, 10), color="white")
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
+
+
+def comparison_uploads(include_previous: bool = True):
+    image_bytes = make_comparison_image()
+    files = [
+        ("initial_image", ("initial.png", image_bytes, "image/png")),
+        ("final_image", ("final.png", image_bytes, "image/png")),
+    ]
+    if include_previous:
+        files.append(("previous_image", ("previous.png", image_bytes, "image/png")))
+    return files
+
+
+class TestComparison:
+    @pytest.fixture(autouse=True)
+    def clear_comparison_token(self, monkeypatch):
+        monkeypatch.delenv("DAMAGE_AI_API_TOKEN", raising=False)
+
+    def test_compare_reports_only_unmatched_detections_with_yx_boxes(self, monkeypatch):
+        import api
+
+        model_results = [
+            {"damages": [
+                {"type": "scratch", "severity": "light", "confidence": 0.8, "bbox": [2, 1, 6, 5]},
+                {"type": "crack", "severity": "moderate", "confidence": 0.75, "bbox": [4, 4, 14, 9]},
+            ]},
+            {"damages": [
+                {"type": "scratch", "severity": "light", "confidence": 0.82, "bbox": [2, 1, 6, 5]},
+                {"type": "crack", "severity": "moderate", "confidence": 0.77, "bbox": [4, 4, 14, 9]},
+                {"type": "dent", "severity": "severe", "confidence": 0.91, "bbox": [8, 1, 14, 8]},
+            ]},
+            {"damages": [
+                {"type": "scratch", "severity": "light", "confidence": 0.7, "bbox": [2, 1, 6, 5]},
+            ]},
+        ]
+
+        class FakeDetector:
+            def __init__(self):
+                self.results = iter(model_results)
+
+            def detect_damage(self, image):
+                return next(self.results)
+
+        monkeypatch.setattr(api, "CV_AVAILABLE", True)
+        monkeypatch.setattr(api, "CarDamageDetector", lambda **kwargs: FakeDetector(), raising=False)
+
+        response = client.post(
+            "/compare",
+            data={"angle": "Frente"},
+            files=comparison_uploads(),
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["angle"] == "Frente"
+        assert [damage["origin"] for damage in data["damages"]] == ["between_trips", "this_trip"]
+        assert [damage["damage_type"] for damage in data["damages"]] == ["crack", "dent"]
+        assert data["damages"][0]["bbox"] == [0.4, 0.2, 0.9, 0.7]
+        assert data["damages"][0]["confidence"] == 0.75
+        assert data["damages"][1]["severity"] == "severe"
+
+    def test_comparison_matching_requires_class_and_iou_and_is_one_to_one(self):
+        import api
+
+        reference = [{"damage_type": "scratch", "bbox": (0.0, 0.0, 1.0, 1.0)}]
+        candidates = [
+            {"damage_type": "scratch", "bbox": (0.0, 0.0, 0.5, 1.0)},
+            {"damage_type": "scratch", "bbox": (0.0, 0.0, 0.5, 1.0)},
+            {"damage_type": "dent", "bbox": (0.0, 0.0, 1.0, 1.0)},
+            {"damage_type": "scratch", "bbox": (0.0, 0.0, 0.2, 1.0)},
+        ]
+
+        assert api._unmatched_candidate_indexes(reference, candidates) == {1, 2, 3}
+
+    def test_compare_rejects_invalid_angle(self):
+        response = client.post(
+            "/compare",
+            data={"angle": "Top"},
+            files=comparison_uploads(include_previous=False),
+        )
+
+        assert response.status_code == 400
+
+    def test_compare_accepts_optional_previous_image(self, monkeypatch):
+        import api
+
+        class NoDamageDetector:
+            def detect_damage(self, image):
+                return {"damages": []}
+
+        monkeypatch.setattr(api, "CV_AVAILABLE", True)
+        monkeypatch.setattr(api, "CarDamageDetector", lambda **kwargs: NoDamageDetector(), raising=False)
+        response = client.post(
+            "/compare",
+            data={"angle": "Lateral Esquerda"},
+            files=comparison_uploads(include_previous=False),
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"angle": "Lateral Esquerda", "damages": []}
+
+    def test_compare_requires_configured_token(self, monkeypatch):
+        monkeypatch.setenv("DAMAGE_AI_API_TOKEN", "test-secret")
+        for headers in ({}, {"Authorization": "Bearer wrong-secret"}):
+            response = client.post(
+                "/compare",
+                data={"angle": "Frente"},
+                files=comparison_uploads(include_previous=False),
+                headers=headers,
+            )
+
+            assert response.status_code == 401
+            assert response.headers["www-authenticate"] == "Bearer"
+            assert "test-secret" not in response.text
+
+    def test_compare_accepts_configured_token(self, monkeypatch):
+        import api
+
+        class NoDamageDetector:
+            def detect_damage(self, image):
+                return {"damages": []}
+
+        monkeypatch.setenv("DAMAGE_AI_API_TOKEN", "test-secret")
+        monkeypatch.setattr(api, "CV_AVAILABLE", True)
+        monkeypatch.setattr(api, "CarDamageDetector", lambda **kwargs: NoDamageDetector(), raising=False)
+        response = client.post(
+            "/compare",
+            data={"angle": "Frente"},
+            files=comparison_uploads(include_previous=False),
+            headers={"Authorization": "Bearer test-secret"},
+        )
+
+        assert response.status_code == 200
+        health_response = client.get("/health")
+        assert "test-secret" not in health_response.text
+
+
+    def test_compare_rejects_invalid_image_content(self):
+        response = client.post(
+            "/compare",
+            data={"angle": "Frente"},
+            files=[
+                ("initial_image", ("bad.png", b"not an image", "image/png")),
+                ("final_image", ("valid.png", make_comparison_image(), "image/png")),
+            ],
+        )
+
+        assert response.status_code == 400
+
+    def test_compare_fails_explicitly_when_cv_is_unavailable(self, monkeypatch):
+        import api
+
+        monkeypatch.setattr(api, "CV_AVAILABLE", False)
+        response = client.post(
+            "/compare",
+            data={"angle": "Traseira"},
+            files=comparison_uploads(include_previous=False),
+        )
+
+        assert response.status_code == 503
+        assert "unavailable" in response.json()["detail"]
+
+    def test_compare_returns_500_when_yolo_inference_fails(self, monkeypatch):
+        import api
+
+        class FailingDetector:
+            def detect_damage(self, image):
+                raise RuntimeError("model inference failure")
+
+        monkeypatch.setattr(api, "CV_AVAILABLE", True)
+        monkeypatch.setattr(api, "CarDamageDetector", lambda **kwargs: FailingDetector(), raising=False)
+        response = client.post(
+            "/compare",
+            data={"angle": "Lateral Direita"},
+            files=comparison_uploads(include_previous=False),
+        )
+
+        assert response.status_code == 500
+        assert "no comparison results" in response.json()["detail"]
 
 
 # ---------------------------------------------------------------------------

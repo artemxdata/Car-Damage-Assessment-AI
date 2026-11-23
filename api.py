@@ -14,6 +14,9 @@ Endpoint:
     GET  /policy  — current policy configuration
 """
 
+import io
+import math
+import hmac
 import os
 import sys
 import uuid
@@ -21,10 +24,11 @@ import time
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
@@ -37,6 +41,7 @@ logger = logging.getLogger("damage_ai_api")
 # Ensure project root is on sys.path so we can import existing modules
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent
+YOLO_MODEL_PATH = PROJECT_ROOT / "models" / "best.pt"
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -111,7 +116,160 @@ class HealthResponse(BaseModel):
     version: str
     cv_available: bool
     agent_available: bool
+    compare_available: bool
     uptime_seconds: float
+
+
+class ComparedDamage(BaseModel):
+    """Damage first detected between two vehicle images."""
+    damage_type: str
+    description: str
+    severity: Literal["minor", "moderate", "severe"]
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    origin: Literal["this_trip", "between_trips"]
+    bbox: tuple[float, float, float, float] = Field(
+        ..., description="Normalized [ymin, xmin, ymax, xmax] coordinates"
+    )
+
+
+class ComparisonResult(BaseModel):
+    angle: str
+    damages: list[ComparedDamage]
+
+
+# ---------------------------------------------------------------------------
+# YOLO comparison helpers
+# ---------------------------------------------------------------------------
+
+COMPARISON_IOU_THRESHOLD = 0.3
+MAX_COMPARISON_IMAGE_BYTES = 20 * 1024 * 1024
+MAX_COMPARISON_IMAGE_PIXELS = 40_000_000
+COMPARISON_ANGLES = {
+    "Frente",
+    "Lateral Esquerda",
+    "Traseira",
+    "Lateral Direita",
+}
+
+
+async def _read_comparison_image(upload: UploadFile) -> Image.Image:
+    """Validate an uploaded image and return a fully decoded RGB image."""
+    allowed_types = {
+        "image/jpeg": "JPEG",
+        "image/png": "PNG",
+        "image/webp": "WEBP",
+    }
+    expected_format = allowed_types.get(upload.content_type or "")
+    if expected_format is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported image type: {upload.content_type}. Use JPEG, PNG, or WebP.",
+        )
+
+    image_bytes = await upload.read(MAX_COMPARISON_IMAGE_BYTES + 1)
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Image file is empty.")
+    if len(image_bytes) > MAX_COMPARISON_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="Image file exceeds 20MB limit.")
+
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            if image.format != expected_format:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Image content does not match its declared content type.",
+                )
+            if image.width * image.height > MAX_COMPARISON_IMAGE_PIXELS:
+                raise HTTPException(status_code=400, detail="Image dimensions exceed the supported limit.")
+            image.verify()
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            image.load()
+            return image.convert("RGB")
+    except HTTPException:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise HTTPException(status_code=400, detail="Image file is invalid or unreadable.") from exc
+
+
+def _normalize_comparison_detections(result: dict, image_size: tuple[int, int]) -> list[dict]:
+    """Convert detector pixel XYXY boxes and severities to the API contract."""
+    width, height = image_size
+    damages = result.get("damages")
+    if not isinstance(damages, list):
+        raise RuntimeError("YOLO returned an invalid detection result.")
+
+    normalized = []
+    severity_map = {
+        "light": "minor",
+        "minor": "minor",
+        "moderate": "moderate",
+        "severe": "severe",
+    }
+    for detection in damages:
+        damage_type = detection.get("type", detection.get("damage_type"))
+        severity = severity_map.get(str(detection.get("severity", "")).lower())
+        confidence = detection.get("confidence")
+        bbox = detection.get("bbox")
+        if not isinstance(damage_type, str) or not damage_type.strip() or severity is None:
+            raise RuntimeError("YOLO returned a detection with invalid class or severity.")
+        if not isinstance(confidence, (int, float)) or not math.isfinite(confidence) or not 0 <= confidence <= 1:
+            raise RuntimeError("YOLO returned an invalid detection confidence.")
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            raise RuntimeError("YOLO returned an invalid bounding box.")
+
+        try:
+            x1, y1, x2, y2 = (float(value) for value in bbox)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("YOLO returned an invalid bounding box.") from exc
+        if not all(math.isfinite(value) for value in (x1, y1, x2, y2)):
+            raise RuntimeError("YOLO returned an invalid bounding box.")
+        x1, x2 = max(0.0, min(width, x1)), max(0.0, min(width, x2))
+        y1, y2 = max(0.0, min(height, y1)), max(0.0, min(height, y2))
+        if x2 <= x1 or y2 <= y1:
+            raise RuntimeError("YOLO returned an invalid bounding box.")
+
+        normalized.append({
+            "damage_type": damage_type.strip(),
+            "description": f"{damage_type.strip()} detected ({severity} severity)",
+            "severity": severity,
+            "confidence": float(confidence),
+            "bbox": (y1 / height, x1 / width, y2 / height, x2 / width),
+        })
+    return normalized
+
+
+def _box_iou_yx(first: tuple[float, ...], second: tuple[float, ...]) -> float:
+    """Calculate IoU for normalized [ymin, xmin, ymax, xmax] boxes."""
+    ymin = max(first[0], second[0])
+    xmin = max(first[1], second[1])
+    ymax = min(first[2], second[2])
+    xmax = min(first[3], second[3])
+    intersection = max(0.0, ymax - ymin) * max(0.0, xmax - xmin)
+    first_area = (first[2] - first[0]) * (first[3] - first[1])
+    second_area = (second[2] - second[0]) * (second[3] - second[1])
+    union = first_area + second_area - intersection
+    return intersection / union if union > 0 else 0.0
+
+
+def _unmatched_candidate_indexes(reference: list[dict], candidates: list[dict]) -> set[int]:
+    """Greedily match same-class boxes by descending IoU, with stable tie-breaking."""
+    possible_matches = []
+    for candidate_index, candidate in enumerate(candidates):
+        for reference_index, previous in enumerate(reference):
+            if candidate["damage_type"].casefold() != previous["damage_type"].casefold():
+                continue
+            iou = _box_iou_yx(candidate["bbox"], previous["bbox"])
+            if iou >= COMPARISON_IOU_THRESHOLD:
+                possible_matches.append((iou, candidate_index, reference_index))
+
+    possible_matches.sort(key=lambda match: (-match[0], match[1], match[2]))
+    matched_candidates = set()
+    matched_references = set()
+    for _, candidate_index, reference_index in possible_matches:
+        if candidate_index not in matched_candidates and reference_index not in matched_references:
+            matched_candidates.add(candidate_index)
+            matched_references.add(reference_index)
+    return set(range(len(candidates))) - matched_candidates
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +428,7 @@ async def health_check():
         version="0.1.0",
         cv_available=CV_AVAILABLE,
         agent_available=AGENT_AVAILABLE,
+        compare_available=CV_AVAILABLE and YOLO_MODEL_PATH.is_file(),
         uptime_seconds=round(time.time() - APP_START_TIME, 1),
     )
 
@@ -396,6 +555,81 @@ async def assess_damage(
         cv_backend=cv_backend,
         human_review_required=decision_result.get("human_review_required", False),
     )
+
+
+@app.post("/compare", response_model=ComparisonResult, tags=["Assessment"])
+async def compare_damage(
+    angle: str = Form(...),
+    initial_image: UploadFile = File(...),
+    final_image: UploadFile = File(...),
+    previous_image: Optional[UploadFile] = File(None),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
+    """Report only YOLO detections not geometrically matched in the prior image."""
+    expected_token = os.getenv("DAMAGE_AI_API_TOKEN")
+    if expected_token is not None:
+        auth_scheme, separator, supplied_token = (authorization or "").partition(" ")
+        valid_token = (
+            bool(separator)
+            and auth_scheme.casefold() == "bearer"
+            and bool(supplied_token)
+            and hmac.compare_digest(
+                supplied_token.encode("utf-8"),
+                expected_token.encode("utf-8"),
+            )
+        )
+        if not valid_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or missing bearer token.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    if angle not in COMPARISON_ANGLES:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid angle. Use Frente, Lateral Esquerda, Traseira, or Lateral Direita.",
+        )
+
+    initial = await _read_comparison_image(initial_image)
+    final = await _read_comparison_image(final_image)
+    previous = await _read_comparison_image(previous_image) if previous_image is not None else None
+
+    if not CV_AVAILABLE:
+        raise HTTPException(status_code=503, detail="YOLO comparison is unavailable because CV dependencies are not installed.")
+    if not YOLO_MODEL_PATH.is_file():
+        raise HTTPException(status_code=503, detail="YOLO comparison is unavailable because the trained model is missing.")
+
+    try:
+        detector = CarDamageDetector(
+            model_path=str(YOLO_MODEL_PATH),
+            confidence_threshold=0.25,
+        )
+    except Exception as exc:
+        logger.exception("Could not load the trained YOLO model for /compare")
+        raise HTTPException(status_code=503, detail="The trained YOLO model could not be loaded.") from exc
+
+    def detect(image: Image.Image) -> list[dict]:
+        result = detector.detect_damage(image)
+        return _normalize_comparison_detections(result, image.size)
+
+    try:
+        initial_detections = detect(initial)
+        final_detections = detect(final)
+        previous_detections = detect(previous) if previous is not None else []
+    except Exception as exc:
+        logger.exception("YOLO inference failed for /compare")
+        raise HTTPException(status_code=500, detail="YOLO inference failed; no comparison results were generated.") from exc
+
+    damages = []
+    if previous is not None:
+        for index in sorted(_unmatched_candidate_indexes(previous_detections, initial_detections)):
+            damages.append(ComparedDamage(**initial_detections[index], origin="between_trips"))
+
+    for index in sorted(_unmatched_candidate_indexes(initial_detections, final_detections)):
+        damages.append(ComparedDamage(**final_detections[index], origin="this_trip"))
+
+    return ComparisonResult(angle=angle, damages=damages)
 
 
 @app.get("/policy", tags=["Policy"])

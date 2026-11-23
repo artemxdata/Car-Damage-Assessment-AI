@@ -64,8 +64,6 @@ class CarDamageDetector:
             "broken_part": {"light": 300, "moderate": 800, "severe": 2000},
             "paint_damage": {"light": 150, "moderate": 400, "severe": 900}
         }
-        
-        self._load_model()
     
     def _get_device(self) -> str:
         """Determine the best available device for inference."""
