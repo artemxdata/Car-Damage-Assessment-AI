@@ -292,15 +292,15 @@ class TestValidation:
 # Tests: paired comparison endpoint
 # ---------------------------------------------------------------------------
 
-def make_comparison_image() -> bytes:
-    image = Image.new("RGB", (20, 10), color="white")
+def make_comparison_image(size: tuple[int, int] = (20, 10)) -> bytes:
+    image = Image.new("RGB", size, color="white")
     output = io.BytesIO()
     image.save(output, format="PNG")
     return output.getvalue()
 
 
-def comparison_uploads(include_previous: bool = True):
-    image_bytes = make_comparison_image()
+def comparison_uploads(include_previous: bool = True, image_size: tuple[int, int] = (20, 10)):
+    image_bytes = make_comparison_image(image_size)
     files = [
         ("initial_image", ("initial.png", image_bytes, "image/png")),
         ("final_image", ("final.png", image_bytes, "image/png")),
@@ -345,6 +345,84 @@ class TestComparison:
             assert response.json() == {"angle": "Frente", "damages": []}
 
         assert detector_loads == 1
+
+    def test_compare_downscales_images_before_inference(self, monkeypatch):
+        import api
+
+        detected_sizes = []
+
+        class SizeRecordingDetector:
+            def detect_damage(self, image):
+                detected_sizes.append(image.size)
+                return {"damages": []}
+
+        monkeypatch.setattr(api, "MAX_COMPARISON_IMAGE_DIMENSION", 10)
+        monkeypatch.setattr(api, "CV_AVAILABLE", True)
+        monkeypatch.setattr(api, "CarDamageDetector", lambda **kwargs: SizeRecordingDetector(), raising=False)
+
+        response = client.post(
+            "/compare",
+            data={"angle": "Frente"},
+            files=comparison_uploads(include_previous=False, image_size=(40, 20)),
+        )
+
+        assert response.status_code == 200
+        assert detected_sizes == [(10, 5), (10, 5)]
+
+    def test_compare_rejects_images_over_pixel_limit(self, monkeypatch):
+        import api
+
+        monkeypatch.setattr(api, "MAX_COMPARISON_IMAGE_PIXELS", 100)
+        response = client.post(
+            "/compare",
+            data={"angle": "Frente"},
+            files=comparison_uploads(include_previous=False, image_size=(20, 10)),
+        )
+
+        assert response.status_code == 400
+        assert "dimensions exceed" in response.json()["detail"]
+
+    def test_compare_serializes_requests_to_bound_memory(self, monkeypatch):
+        import asyncio
+        import api
+
+        active_reads = 0
+        max_active_reads = 0
+
+        class NoDamageDetector:
+            def detect_damage(self, image):
+                return {"damages": []}
+
+        async def read_image(_upload):
+            nonlocal active_reads, max_active_reads
+            active_reads += 1
+            max_active_reads = max(max_active_reads, active_reads)
+            try:
+                await asyncio.sleep(0.01)
+                return Image.new("RGB", (20, 10), color="white")
+            finally:
+                active_reads -= 1
+
+        monkeypatch.setattr(api, "_read_comparison_image", read_image)
+        monkeypatch.setattr(api, "CV_AVAILABLE", True)
+        monkeypatch.setattr(api, "CarDamageDetector", lambda **kwargs: NoDamageDetector(), raising=False)
+
+        async def run_concurrent_comparisons():
+            return await asyncio.gather(*[
+                api.compare_damage(
+                    angle="Frente",
+                    initial_image=object(),
+                    final_image=object(),
+                    previous_image=None,
+                    authorization=None,
+                )
+                for _ in range(4)
+            ])
+
+        responses = asyncio.run(run_concurrent_comparisons())
+
+        assert max_active_reads == 1
+        assert all(response.damages == [] for response in responses)
 
     def test_compare_reports_only_unmatched_detections_with_yx_boxes(self, monkeypatch):
         import api

@@ -14,6 +14,7 @@ Endpoint:
     GET  /policy  — current policy configuration
 """
 
+import asyncio
 import io
 import math
 import hmac
@@ -67,6 +68,7 @@ except ImportError:
 
 _comparison_detector_lock = Lock()
 _comparison_detector = None
+_comparison_request_lock = asyncio.Lock()
 
 
 def _get_comparison_detector():
@@ -160,7 +162,8 @@ class ComparisonResult(BaseModel):
 
 COMPARISON_IOU_THRESHOLD = 0.3
 MAX_COMPARISON_IMAGE_BYTES = 20 * 1024 * 1024
-MAX_COMPARISON_IMAGE_PIXELS = 40_000_000
+MAX_COMPARISON_IMAGE_PIXELS = 16_000_000
+MAX_COMPARISON_IMAGE_DIMENSION = 2048
 COMPARISON_ANGLES = {
     "Frente",
     "Lateral Esquerda",
@@ -201,6 +204,10 @@ async def _read_comparison_image(upload: UploadFile) -> Image.Image:
             image.verify()
         with Image.open(io.BytesIO(image_bytes)) as image:
             image.load()
+            image.thumbnail(
+                (MAX_COMPARISON_IMAGE_DIMENSION, MAX_COMPARISON_IMAGE_DIMENSION),
+                Image.Resampling.LANCZOS,
+            )
             return image.convert("RGB")
     except HTTPException:
         raise
@@ -608,42 +615,43 @@ async def compare_damage(
             detail="Invalid angle. Use Frente, Lateral Esquerda, Traseira, or Lateral Direita.",
         )
 
-    initial = await _read_comparison_image(initial_image)
-    final = await _read_comparison_image(final_image)
-    previous = await _read_comparison_image(previous_image) if previous_image is not None else None
+    async with _comparison_request_lock:
+        initial = await _read_comparison_image(initial_image)
+        final = await _read_comparison_image(final_image)
+        previous = await _read_comparison_image(previous_image) if previous_image is not None else None
 
-    if not CV_AVAILABLE:
-        raise HTTPException(status_code=503, detail="YOLO comparison is unavailable because CV dependencies are not installed.")
-    if not YOLO_MODEL_PATH.is_file():
-        raise HTTPException(status_code=503, detail="YOLO comparison is unavailable because the trained model is missing.")
+        if not CV_AVAILABLE:
+            raise HTTPException(status_code=503, detail="YOLO comparison is unavailable because CV dependencies are not installed.")
+        if not YOLO_MODEL_PATH.is_file():
+            raise HTTPException(status_code=503, detail="YOLO comparison is unavailable because the trained model is missing.")
 
-    try:
-        detector = _get_comparison_detector()
-    except Exception as exc:
-        logger.exception("Could not load the trained YOLO model for /compare")
-        raise HTTPException(status_code=503, detail="The trained YOLO model could not be loaded.") from exc
+        try:
+            detector = _get_comparison_detector()
+        except Exception as exc:
+            logger.exception("Could not load the trained YOLO model for /compare")
+            raise HTTPException(status_code=503, detail="The trained YOLO model could not be loaded.") from exc
 
-    def detect(image: Image.Image) -> list[dict]:
-        result = detector.detect_damage(image)
-        return _normalize_comparison_detections(result, image.size)
+        def detect(image: Image.Image) -> list[dict]:
+            result = detector.detect_damage(image)
+            return _normalize_comparison_detections(result, image.size)
 
-    try:
-        initial_detections = detect(initial)
-        final_detections = detect(final)
-        previous_detections = detect(previous) if previous is not None else []
-    except Exception as exc:
-        logger.exception("YOLO inference failed for /compare")
-        raise HTTPException(status_code=500, detail="YOLO inference failed; no comparison results were generated.") from exc
+        try:
+            initial_detections = detect(initial)
+            final_detections = detect(final)
+            previous_detections = detect(previous) if previous is not None else []
+        except Exception as exc:
+            logger.exception("YOLO inference failed for /compare")
+            raise HTTPException(status_code=500, detail="YOLO inference failed; no comparison results were generated.") from exc
 
-    damages = []
-    if previous is not None:
-        for index in sorted(_unmatched_candidate_indexes(previous_detections, initial_detections)):
-            damages.append(ComparedDamage(**initial_detections[index], origin="between_trips"))
+        damages = []
+        if previous is not None:
+            for index in sorted(_unmatched_candidate_indexes(previous_detections, initial_detections)):
+                damages.append(ComparedDamage(**initial_detections[index], origin="between_trips"))
 
-    for index in sorted(_unmatched_candidate_indexes(initial_detections, final_detections)):
-        damages.append(ComparedDamage(**final_detections[index], origin="this_trip"))
+        for index in sorted(_unmatched_candidate_indexes(initial_detections, final_detections)):
+            damages.append(ComparedDamage(**final_detections[index], origin="this_trip"))
 
-    return ComparisonResult(angle=angle, damages=damages)
+        return ComparisonResult(angle=angle, damages=damages)
 
 
 @app.get("/policy", tags=["Policy"])

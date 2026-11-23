@@ -141,7 +141,7 @@ python api.py
 
 ### Compare images by angle
 
-`POST /compare` accepts multipart fields `angle`, `initial_image`, `final_image`, and an optional `previous_image`. `angle` must be `Frente`, `Lateral Esquerda`, `Traseira`, or `Lateral Direita`. Images must be JPEG, PNG, or WebP and no larger than 20 MB.
+`POST /compare` accepts multipart fields `angle`, `initial_image`, `final_image`, and an optional `previous_image`. `angle` must be `Frente`, `Lateral Esquerda`, `Traseira`, or `Lateral Direita`. Images must be JPEG, PNG, or WebP, no larger than 20 MB or 16 megapixels. Accepted images are downscaled to a maximum dimension of 2048 pixels before inference, and comparison requests are processed one at a time to limit peak memory.
 
 With `previous_image`, the endpoint compares `previous_image → initial_image` for `between_trips` damage and `initial_image → final_image` for `this_trip` damage. Without it, only the latter comparison is made. A detection is considered equivalent only when its class matches (case-insensitively) and its normalized bounding box has IoU ≥ 0.30; matching is one-to-one, greedy by highest IoU, with stable index tie-breaking. Detection confidence is the YOLO confidence score, **not** a calibrated probability that the damage is new. Bounding boxes are normalized to `[ymin, xmin, ymax, xmax]` in the app's YX coordinate order.
 
